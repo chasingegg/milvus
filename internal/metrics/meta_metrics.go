@@ -57,7 +57,7 @@ var (
 		}, []string{metaOpType, statusLabelName})
 )
 
-//RegisterMetaMetrics registers etcd metrics
+// RegisterMetaMetrics registers etcd metrics
 func RegisterMetaMetrics(registry *prometheus.Registry) {
 	registry.MustRegister(MetaKvSize)
 	registry.MustRegister(MetaRequestLatency)

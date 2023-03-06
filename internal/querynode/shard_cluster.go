@@ -905,6 +905,24 @@ func (sc *ShardCluster) GetSegmentInfos() []SegmentEntry {
 	return result
 }
 
+func (sc *ShardCluster) GetSegmentNum() int {
+	sc.mutVersion.RLock()
+	distribution := sc.distribution
+	sc.mutVersion.RUnlock()
+	// before setup version
+	if distribution == nil {
+		return nil
+	}
+	items, version := distribution.GetCurrent()
+	sc.finishUsage(version)
+
+	var result []SegmentEntry
+	for _, item := range items {
+		result = append(result, item.Segments...)
+	}
+	return len(result)
+}
+
 func (sc *ShardCluster) getVersion() int64 {
 	return sc.version
 }

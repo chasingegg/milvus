@@ -60,7 +60,7 @@ func TestMetaService_All(t *testing.T) {
 	})
 }
 
-//RootCoordFails1 root coord mock for failure
+// RootCoordFails1 root coord mock for failure
 type RootCoordFails1 struct {
 	RootCoordFactory
 }
@@ -70,7 +70,7 @@ func (rc *RootCoordFails1) DescribeCollectionInternal(ctx context.Context, req *
 	return nil, errors.New("always fail")
 }
 
-//RootCoordFails2 root coord mock for failure
+// RootCoordFails2 root coord mock for failure
 type RootCoordFails2 struct {
 	RootCoordFactory
 }

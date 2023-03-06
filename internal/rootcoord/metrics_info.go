@@ -30,7 +30,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
-//getComponentConfigurations returns the configurations of rootcoord matching req.Pattern
+// getComponentConfigurations returns the configurations of rootcoord matching req.Pattern
 func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigurationsRequest) *internalpb.ShowConfigurationsResponse {
 	prefix := "rootcoord."
 	matchedConfig := Params.RootCoordCfg.Base.GetByPattern(prefix + req.Pattern)

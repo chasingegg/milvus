@@ -60,7 +60,7 @@ func (node *DataNode) getQuotaMetrics() (*metricsinfo.DataNodeQuotaMetrics, erro
 	}, nil
 }
 
-//getComponentConfigurations returns the configurations of dataNode matching req.Pattern
+// getComponentConfigurations returns the configurations of dataNode matching req.Pattern
 func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigurationsRequest) *internalpb.ShowConfigurationsResponse {
 	prefix := "datanode."
 	matchedConfig := Params.DataNodeCfg.Base.GetByPattern(prefix + req.Pattern)

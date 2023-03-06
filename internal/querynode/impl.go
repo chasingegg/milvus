@@ -750,6 +750,7 @@ func (node *QueryNode) Search(ctx context.Context, req *querypb.SearchRequest) (
 			SegmentIDs:      req.SegmentIDs,
 			FromShardLeader: req.FromShardLeader,
 			Scope:           req.Scope,
+			TotalChannelNum: req.TotalChannelNum,
 		}
 		runningGp.Go(func() error {
 			ret, err := node.searchWithDmlChannel(runningCtx, req, ch)
@@ -882,6 +883,44 @@ func (node *QueryNode) searchWithDmlChannel(ctx context.Context, req *querypb.Se
 		errCluster        error
 	)
 	defer cancel()
+
+	// optimize search params
+	if req.Req.GetSerializedExprPlan() != nil && node.queryHook != nil {
+		channelNum := int(req.GetTotalChannelNum())
+		if channelNum <= 0 {
+			channelNum = 1
+		}
+		segmentNum := cluster.GetSegmentNum() * channelNum
+		plan := &planpb.PlanNode{}
+		err = proto.Unmarshal(req.Req.GetSerializedExprPlan(), plan)
+		if err != nil {
+			failRet.Status.Reason = err.Error()
+			return failRet, nil
+		}
+		switch plan.GetNode().(type) {
+		case *planpb.PlanNode_VectorAnns:
+			qinfo := plan.GetVectorAnns().GetQueryInfo()
+			paramMap := map[string]interface{}{
+				"topk":         qinfo.GetTopk(),
+				"search_param": qinfo.GetSearchParams(),
+				"segment_num":  segmentNum,
+			}
+			err := node.queryHook.Run(paramMap)
+			if err != nil {
+				failRet.Status.Reason = err.Error()
+				return failRet, nil
+			}
+			qinfo.Topk = paramMap["topk"].(int64)
+			qinfo.SearchParams = paramMap["search_param"].(string)
+
+			SerializedExprPlan, err := proto.Marshal(plan)
+			if err != nil {
+				failRet.Status.Reason = err.Error()
+				return failRet, nil
+			}
+			req.Req.SerializedExprPlan = SerializedExprPlan
+		}
+	}
 
 	// shard leader dispatches request to its shard cluster
 	var withStreamingFunc searchWithStreaming

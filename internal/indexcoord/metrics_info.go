@@ -31,7 +31,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/uniquegenerator"
 )
 
-//getComponentConfigurations returns the configurations of indexCoord matching req.Pattern
+// getComponentConfigurations returns the configurations of indexCoord matching req.Pattern
 func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigurationsRequest) *internalpb.ShowConfigurationsResponse {
 	prefix := "indexcoord."
 	matchedConfig := Params.IndexCoordCfg.Base.GetByPattern(prefix + req.Pattern)

@@ -56,7 +56,7 @@ var (
 		}, []string{persistentDataOpType, statusLabelName})
 )
 
-//RegisterStorageMetrics registers storage metrics
+// RegisterStorageMetrics registers storage metrics
 func RegisterStorageMetrics(registry *prometheus.Registry) {
 	registry.MustRegister(PersistentDataKvSize)
 	registry.MustRegister(PersistentDataRequestLatency)

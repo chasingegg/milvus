@@ -494,13 +494,14 @@ func (t *searchTask) PostExecute(ctx context.Context) error {
 	return nil
 }
 
-func (t *searchTask) searchShard(ctx context.Context, nodeID int64, qn types.QueryNode, channelIDs []string) error {
+func (t *searchTask) searchShard(ctx context.Context, nodeID int64, qn types.QueryNode, channelIDs []string, channelNum int) error {
 	searchReq := typeutil.Clone(t.SearchRequest)
 	searchReq.GetBase().TargetID = nodeID
 	req := &querypb.SearchRequest{
-		Req:         searchReq,
-		DmlChannels: channelIDs,
-		Scope:       querypb.DataScope_All,
+		Req:             searchReq,
+		DmlChannels:     channelIDs,
+		Scope:           querypb.DataScope_All,
+		TotalChannelNum: channelNum,
 	}
 
 	queryNode := querynode.GetQueryNode()

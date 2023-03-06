@@ -6,7 +6,7 @@
 // "License"); you may not use this file except in compliance
 // with the License. You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -63,7 +63,7 @@ func (m *Manager) GetConfig(key string) (string, error) {
 	return m.getConfigValueBySource(realKey, sourceName)
 }
 
-//GetConfigsByPattern returns key values that matched pattern
+// GetConfigsByPattern returns key values that matched pattern
 // withPrefix : whether key include the prefix of pattern
 func (m *Manager) GetConfigsByPattern(pattern string, withPrefix bool) map[string]string {
 

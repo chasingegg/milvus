@@ -50,7 +50,7 @@ var (
 		}, []string{})
 )
 
-//RegisterIndexCoord registers IndexCoord metrics
+// RegisterIndexCoord registers IndexCoord metrics
 func RegisterIndexCoord(registry *prometheus.Registry) {
 	registry.MustRegister(IndexCoordIndexRequestCounter)
 	registry.MustRegister(IndexCoordIndexTaskNum)

@@ -58,8 +58,8 @@ type MockIndexCoord_CheckHealth_Call struct {
 }
 
 // CheckHealth is a helper method to define mock.On call
-//  - ctx context.Context
-//  - req *milvuspb.CheckHealthRequest
+//   - ctx context.Context
+//   - req *milvuspb.CheckHealthRequest
 func (_e *MockIndexCoord_Expecter) CheckHealth(ctx interface{}, req interface{}) *MockIndexCoord_CheckHealth_Call {
 	return &MockIndexCoord_CheckHealth_Call{Call: _e.mock.On("CheckHealth", ctx, req)}
 }
@@ -105,8 +105,8 @@ type MockIndexCoord_CreateIndex_Call struct {
 }
 
 // CreateIndex is a helper method to define mock.On call
-//  - ctx context.Context
-//  - req *indexpb.CreateIndexRequest
+//   - ctx context.Context
+//   - req *indexpb.CreateIndexRequest
 func (_e *MockIndexCoord_Expecter) CreateIndex(ctx interface{}, req interface{}) *MockIndexCoord_CreateIndex_Call {
 	return &MockIndexCoord_CreateIndex_Call{Call: _e.mock.On("CreateIndex", ctx, req)}
 }
@@ -152,8 +152,8 @@ type MockIndexCoord_DescribeIndex_Call struct {
 }
 
 // DescribeIndex is a helper method to define mock.On call
-//  - ctx context.Context
-//  - req *indexpb.DescribeIndexRequest
+//   - ctx context.Context
+//   - req *indexpb.DescribeIndexRequest
 func (_e *MockIndexCoord_Expecter) DescribeIndex(ctx interface{}, req interface{}) *MockIndexCoord_DescribeIndex_Call {
 	return &MockIndexCoord_DescribeIndex_Call{Call: _e.mock.On("DescribeIndex", ctx, req)}
 }
@@ -199,8 +199,8 @@ type MockIndexCoord_DropIndex_Call struct {
 }
 
 // DropIndex is a helper method to define mock.On call
-//  - ctx context.Context
-//  - req *indexpb.DropIndexRequest
+//   - ctx context.Context
+//   - req *indexpb.DropIndexRequest
 func (_e *MockIndexCoord_Expecter) DropIndex(ctx interface{}, req interface{}) *MockIndexCoord_DropIndex_Call {
 	return &MockIndexCoord_DropIndex_Call{Call: _e.mock.On("DropIndex", ctx, req)}
 }
@@ -246,7 +246,7 @@ type MockIndexCoord_GetComponentStates_Call struct {
 }
 
 // GetComponentStates is a helper method to define mock.On call
-//  - ctx context.Context
+//   - ctx context.Context
 func (_e *MockIndexCoord_Expecter) GetComponentStates(ctx interface{}) *MockIndexCoord_GetComponentStates_Call {
 	return &MockIndexCoord_GetComponentStates_Call{Call: _e.mock.On("GetComponentStates", ctx)}
 }
@@ -292,8 +292,8 @@ type MockIndexCoord_GetIndexBuildProgress_Call struct {
 }
 
 // GetIndexBuildProgress is a helper method to define mock.On call
-//  - ctx context.Context
-//  - req *indexpb.GetIndexBuildProgressRequest
+//   - ctx context.Context
+//   - req *indexpb.GetIndexBuildProgressRequest
 func (_e *MockIndexCoord_Expecter) GetIndexBuildProgress(ctx interface{}, req interface{}) *MockIndexCoord_GetIndexBuildProgress_Call {
 	return &MockIndexCoord_GetIndexBuildProgress_Call{Call: _e.mock.On("GetIndexBuildProgress", ctx, req)}
 }
@@ -339,8 +339,8 @@ type MockIndexCoord_GetIndexInfos_Call struct {
 }
 
 // GetIndexInfos is a helper method to define mock.On call
-//  - ctx context.Context
-//  - req *indexpb.GetIndexInfoRequest
+//   - ctx context.Context
+//   - req *indexpb.GetIndexInfoRequest
 func (_e *MockIndexCoord_Expecter) GetIndexInfos(ctx interface{}, req interface{}) *MockIndexCoord_GetIndexInfos_Call {
 	return &MockIndexCoord_GetIndexInfos_Call{Call: _e.mock.On("GetIndexInfos", ctx, req)}
 }
@@ -386,8 +386,8 @@ type MockIndexCoord_GetIndexState_Call struct {
 }
 
 // GetIndexState is a helper method to define mock.On call
-//  - ctx context.Context
-//  - req *indexpb.GetIndexStateRequest
+//   - ctx context.Context
+//   - req *indexpb.GetIndexStateRequest
 func (_e *MockIndexCoord_Expecter) GetIndexState(ctx interface{}, req interface{}) *MockIndexCoord_GetIndexState_Call {
 	return &MockIndexCoord_GetIndexState_Call{Call: _e.mock.On("GetIndexState", ctx, req)}
 }
@@ -433,8 +433,8 @@ type MockIndexCoord_GetMetrics_Call struct {
 }
 
 // GetMetrics is a helper method to define mock.On call
-//  - ctx context.Context
-//  - req *milvuspb.GetMetricsRequest
+//   - ctx context.Context
+//   - req *milvuspb.GetMetricsRequest
 func (_e *MockIndexCoord_Expecter) GetMetrics(ctx interface{}, req interface{}) *MockIndexCoord_GetMetrics_Call {
 	return &MockIndexCoord_GetMetrics_Call{Call: _e.mock.On("GetMetrics", ctx, req)}
 }
@@ -480,8 +480,8 @@ type MockIndexCoord_GetSegmentIndexState_Call struct {
 }
 
 // GetSegmentIndexState is a helper method to define mock.On call
-//  - ctx context.Context
-//  - req *indexpb.GetSegmentIndexStateRequest
+//   - ctx context.Context
+//   - req *indexpb.GetSegmentIndexStateRequest
 func (_e *MockIndexCoord_Expecter) GetSegmentIndexState(ctx interface{}, req interface{}) *MockIndexCoord_GetSegmentIndexState_Call {
 	return &MockIndexCoord_GetSegmentIndexState_Call{Call: _e.mock.On("GetSegmentIndexState", ctx, req)}
 }
@@ -527,7 +527,7 @@ type MockIndexCoord_GetStatisticsChannel_Call struct {
 }
 
 // GetStatisticsChannel is a helper method to define mock.On call
-//  - ctx context.Context
+//   - ctx context.Context
 func (_e *MockIndexCoord_Expecter) GetStatisticsChannel(ctx interface{}) *MockIndexCoord_GetStatisticsChannel_Call {
 	return &MockIndexCoord_GetStatisticsChannel_Call{Call: _e.mock.On("GetStatisticsChannel", ctx)}
 }
@@ -645,8 +645,8 @@ type MockIndexCoord_ShowConfigurations_Call struct {
 }
 
 // ShowConfigurations is a helper method to define mock.On call
-//  - ctx context.Context
-//  - req *internalpb.ShowConfigurationsRequest
+//   - ctx context.Context
+//   - req *internalpb.ShowConfigurationsRequest
 func (_e *MockIndexCoord_Expecter) ShowConfigurations(ctx interface{}, req interface{}) *MockIndexCoord_ShowConfigurations_Call {
 	return &MockIndexCoord_ShowConfigurations_Call{Call: _e.mock.On("ShowConfigurations", ctx, req)}
 }

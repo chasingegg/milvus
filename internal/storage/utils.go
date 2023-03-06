@@ -98,10 +98,10 @@ func sortFieldDataList(ls fieldDataList) {
 
 // TransferColumnBasedInsertDataToRowBased transfer column-based insert data to row-based rows.
 // Note:
-//	- ts column must exist in insert data;
-//	- row id column must exist in insert data;
-//	- the row num of all column must be equal;
-//	- num_rows = len(RowData), a row will be assembled into the value of blob with field id order;
+//   - ts column must exist in insert data;
+//   - row id column must exist in insert data;
+//   - the row num of all column must be equal;
+//   - num_rows = len(RowData), a row will be assembled into the value of blob with field id order;
 func TransferColumnBasedInsertDataToRowBased(data *InsertData) (
 	Timestamps []uint64,
 	RowIDs []int64,
@@ -189,8 +189,9 @@ func GetDimFromParams(params []*commonpb.KeyValuePair) (int, error) {
 }
 
 // ReadBinary read data in bytes and write it into receiver.
-//  The receiver can be any type in int8, int16, int32, int64, float32, float64 and bool
-//  ReadBinary uses LittleEndian ByteOrder.
+//
+//	The receiver can be any type in int8, int16, int32, int64, float32, float64 and bool
+//	ReadBinary uses LittleEndian ByteOrder.
 func ReadBinary(reader io.Reader, receiver interface{}, dataType schemapb.DataType) {
 	err := binary.Read(reader, common.Endian, receiver)
 	if err != nil {

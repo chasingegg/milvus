@@ -55,8 +55,9 @@ func DefaultImportOptions() ImportOptions {
 
 // ValidateOptions the options is illegal, return nil if illegal, return error if not.
 // Illegal options:
-//     start_ts: 10-digit physical timestamp, e.g. 1665995420
-//     end_ts: 10-digit physical timestamp, e.g. 1665995420
+//
+//	start_ts: 10-digit physical timestamp, e.g. 1665995420
+//	end_ts: 10-digit physical timestamp, e.g. 1665995420
 func ValidateOptions(options []*commonpb.KeyValuePair) error {
 	optionMap := funcutil.KeyValuePair2Map(options)
 	// StartTs should be int

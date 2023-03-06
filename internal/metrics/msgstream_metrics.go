@@ -47,7 +47,7 @@ var (
 		}, []string{msgStreamOpType, statusLabelName})
 )
 
-//RegisterMsgStreamMetrics registers storage metrics
+// RegisterMsgStreamMetrics registers storage metrics
 func RegisterMsgStreamMetrics(registry *prometheus.Registry) {
 	registry.MustRegister(MsgStreamRequestLatency)
 	registry.MustRegister(MsgStreamOpCounter)

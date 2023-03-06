@@ -221,10 +221,11 @@ func (cm *ConnectionManager) Stop() {
 	}
 }
 
-//go:norace
 // fix datarace in unittest
 // startWatchService will only be invoked at start procedure
 // otherwise, remove the annotation and add atomic protection
+//
+//go:norace
 func (cm *ConnectionManager) processEvent(channel <-chan *sessionutil.SessionEvent) {
 	for {
 		select {

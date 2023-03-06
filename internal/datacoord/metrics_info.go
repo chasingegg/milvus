@@ -39,7 +39,7 @@ func (s *Server) getQuotaMetrics() *metricsinfo.DataCoordQuotaMetrics {
 	}
 }
 
-//getComponentConfigurations returns the configurations of dataNode matching req.Pattern
+// getComponentConfigurations returns the configurations of dataNode matching req.Pattern
 func getComponentConfigurations(ctx context.Context, req *internalpb.ShowConfigurationsRequest) *internalpb.ShowConfigurationsResponse {
 	prefix := "datacoord."
 	matchedConfig := Params.DataCoordCfg.Base.GetByPattern(prefix + req.Pattern)

@@ -33,6 +33,7 @@ import (
 	"github.com/milvus-io/milvus/internal/metrics"
 	"os"
 	"path"
+	"plugin"
 	"runtime"
 	"runtime/debug"
 	"strconv"
@@ -126,12 +127,50 @@ type QueryNode struct {
 	taskPool *concurrency.Pool
 
 	IsStandAlone bool
+
+	queryHook Hook
 }
 
 var queryNode *QueryNode = nil
 
 func GetQueryNode() *QueryNode {
 	return queryNode
+}
+
+type Hook interface {
+	Run(map[string]interface{}) error
+	Init(string) error
+}
+
+func initHook() Hook {
+	path := Params.QueryNodeCfg.SoPath.GetValue()
+	if path == "" {
+		return nil
+	}
+	log.Debug("start to load plugin", zap.String("path", path))
+	p, err := plugin.Open(path)
+	if err != nil {
+		log.Error("fail to open the plugin, error: ", zap.Error(err))
+		return nil
+	}
+	log.Debug("plugin open")
+
+	h, err := p.Lookup("QueryNodePlugin")
+	if err != nil {
+		log.Error("fail to the 'QueryNodePlugin' object in the plugin, error: ", zap.Error(err))
+		return nil
+	}
+
+	hoo, ok := h.(Hook)
+	if !ok {
+		log.Error("fail to convert the `Hook` interface, error: ", zap.Error(err))
+		return nil
+	}
+	if err = hoo.Init(Params.AutoIndexConfig.SearchParamsYamlStr); err != nil {
+		log.Error("fail to init configs for the hook, error: %s", zap.Error(err))
+		return nil
+	}
+	return hoo
 }
 
 // NewQueryNode will return a QueryNode with abnormal state.
@@ -144,7 +183,7 @@ func NewQueryNode(ctx context.Context, factory dependency.Factory) *QueryNode {
 		factory:             factory,
 		IsStandAlone:        os.Getenv(metricsinfo.DeployModeEnvKey) == metricsinfo.StandaloneDeployMode,
 	}
-
+	queryNode.queryHook = initHook()
 	queryNode.tSafeReplica = newTSafeReplica()
 	queryNode.scheduler = newTaskScheduler(ctx1, queryNode.tSafeReplica)
 	queryNode.UpdateStateCode(commonpb.StateCode_Abnormal)
