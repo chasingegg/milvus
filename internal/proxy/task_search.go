@@ -501,7 +501,7 @@ func (t *searchTask) searchShard(ctx context.Context, nodeID int64, qn types.Que
 		Req:             searchReq,
 		DmlChannels:     channelIDs,
 		Scope:           querypb.DataScope_All,
-		TotalChannelNum: channelNum,
+		TotalChannelNum: int32(channelNum),
 	}
 
 	queryNode := querynode.GetQueryNode()

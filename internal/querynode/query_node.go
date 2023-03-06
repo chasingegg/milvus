@@ -143,7 +143,7 @@ type Hook interface {
 }
 
 func initHook() Hook {
-	path := Params.QueryNodeCfg.SoPath.GetValue()
+	path := Params.ProxyCfg.SoPath
 	if path == "" {
 		return nil
 	}

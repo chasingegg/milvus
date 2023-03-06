@@ -911,7 +911,7 @@ func (sc *ShardCluster) GetSegmentNum() int {
 	sc.mutVersion.RUnlock()
 	// before setup version
 	if distribution == nil {
-		return nil
+		return 0
 	}
 	items, version := distribution.GetCurrent()
 	sc.finishUsage(version)

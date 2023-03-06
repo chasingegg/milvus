@@ -29,10 +29,6 @@ import (
 	"github.com/milvus-io/milvus/internal/util/errorutil"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/samber/lo"
-	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
-
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
 	"github.com/milvus-io/milvus/internal/common"
@@ -40,10 +36,14 @@ import (
 	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
+	"github.com/milvus-io/milvus/internal/proto/planpb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/util/metricsinfo"
 	"github.com/milvus-io/milvus/internal/util/timerecord"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
+	"github.com/samber/lo"
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 func (node *QueryNode) GetStateCode() commonpb.StateCode {
