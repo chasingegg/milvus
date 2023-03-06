@@ -890,11 +890,7 @@ func (node *QueryNode) searchWithDmlChannel(ctx context.Context, req *querypb.Se
 		if channelNum <= 0 {
 			channelNum = 1
 		}
-		segmentNum := cluster.GetSegmentNum()
-		if segmentNum < 1 {
-			segmentNum = 1
-		}
-		segmentNum = segmentNum * channelNum
+		segmentNum := channelNum
 		plan := &planpb.PlanNode{}
 		err = proto.Unmarshal(req.Req.GetSerializedExprPlan(), plan)
 		if err != nil {
@@ -914,6 +910,7 @@ func (node *QueryNode) searchWithDmlChannel(ctx context.Context, req *querypb.Se
 				failRet.Status.Reason = err.Error()
 				return failRet, nil
 			}
+			fmt.Println("para:" + fmt.Sprint(paramMap))
 			qinfo.Topk = paramMap["topk"].(int64)
 			qinfo.SearchParams = paramMap["search_param"].(string)
 
