@@ -166,6 +166,9 @@ func initHook() Hook {
 		log.Error("fail to convert the `Hook` interface, error: ", zap.Error(err))
 		return nil
 	}
+	if Params.AutoIndexConfig.Enable {
+		return nil
+	}
 	if err = hoo.Init(Params.AutoIndexConfig.SearchParamsYamlStr); err != nil {
 		log.Error("fail to init configs for the hook, error: %s", zap.Error(err))
 		return nil
