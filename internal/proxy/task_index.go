@@ -133,7 +133,9 @@ func (cit *createIndexTask) parseIndexParams() error {
 		if Params.AutoIndexConfig.Enable {
 			if exist {
 				if specifyIndexType != AutoIndexName {
-					return fmt.Errorf("IndexType should be %s", AutoIndexName)
+					log.Warn("original indextype will be overrided", zap.String("type", specifyIndexType))
+					// return fmt.Errorf("IndexType should be %s", AutoIndexName)
+					indexParamsMap[common.IndexTypeKey] = AutoIndexName
 				}
 			}
 			log.Info("create index trigger AutoIndex",
