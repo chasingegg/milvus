@@ -154,6 +154,7 @@ func (cit *createIndexTask) parseIndexParams() error {
 		}
 		if indexType == indexparamcheck.IndexDISKANN {
 			err := indexparams.FillDiskIndexParams(&Params, indexParamsMap)
+			log.Warn("diskann buildindex param: " + fmt.Sprintln(indexParamsMap))
 			if err != nil {
 				return err
 			}

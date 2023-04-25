@@ -415,13 +415,13 @@ common:
   simdType: auto
   indexSliceSize: 16 # MB
   DiskIndex:
-    MaxDegree: 56
-    SearchListSize: 100
-    PQCodeBudgetGBRatio: 0.125
+    MaxDegree: 40
+    SearchListSize: 80
+    PQCodeBudgetGBRatio: 0.1
     BuildNumThreadsRatio: 1.0
-    SearchCacheBudgetGBRatio: 0.10
-    LoadNumThreadRatio: 8.0
-    BeamWidthRatio: 4.0
+    SearchCacheBudgetGBRatio: 0.05
+    LoadNumThreadRatio: 7.0
+    BeamWidthRatio: 3.0
   # This parameter specify how many times the number of threads is the number of cores
   threadCoreCoefficient : 10
 

@@ -281,6 +281,7 @@ func (it *indexBuildTask) BuildIndex(ctx context.Context) error {
 		}
 
 		err = indexparams.SetDiskIndexBuildParams(it.newIndexParams, int64(fieldDataSize))
+		log.Warn("set build index param:" + fmt.Sprintln(it.newIndexParams))
 		if err != nil {
 			log.Ctx(ctx).Warn("failed to fill disk index params", zap.Error(err))
 			return err

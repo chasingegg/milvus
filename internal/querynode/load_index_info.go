@@ -25,10 +25,12 @@ package querynode
 import "C"
 
 import (
+	"fmt"
 	"path/filepath"
 	"unsafe"
 
 	"github.com/milvus-io/milvus-proto/go-api/schemapb"
+	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/util/funcutil"
 	"github.com/milvus-io/milvus/internal/util/indexparamcheck"
@@ -74,6 +76,7 @@ func (li *LoadIndexInfo) appendLoadIndexInfo(bytesIndex [][]byte, indexInfo *que
 	indexParams := funcutil.KeyValuePair2Map(indexInfo.IndexParams)
 	if indexParams["index_type"] == indexparamcheck.IndexDISKANN {
 		err = indexparams.SetDiskIndexLoadParams(indexParams, indexInfo.GetNumRows())
+		log.Warn("set index load param:" + fmt.Sprintln(indexParams))
 		if err != nil {
 			return err
 		}
