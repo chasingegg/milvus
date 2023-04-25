@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"unsafe"
 
+	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/util/hardware"
 	"github.com/milvus-io/milvus/internal/util/paramtable"
 )
@@ -120,7 +121,7 @@ func SetDiskIndexBuildParams(indexParams map[string]string, fieldDataSize int64)
 
 // SetDiskIndexLoadParams set disk index load params with ratio params on queryNode
 // QueryNode cal load params with ratio params ans cpu count...
-func SetDiskIndexLoadParams(indexParams map[string]string, numRows int64) error {
+func SetDiskIndexLoadParams(params *paramtable.ComponentParam, indexParams map[string]string, numRows int64) error {
 	dimStr, ok := indexParams["dim"]
 	if !ok {
 		// type param dim has been put into index params before build index
@@ -154,6 +155,13 @@ func SetDiskIndexLoadParams(indexParams map[string]string, numRows int64) error 
 	beamWidthRatio, err := strconv.ParseFloat(beamWidthRatioStr, 64)
 	if err != nil {
 		return err
+	}
+	if params.AutoIndexConfig.Enable {
+		log.Warn("before rewrite: " + fmt.Sprintln(indexParams))
+		searchCacheBudgetGBRatio = params.AutoIndexConfig.BigDataExtraParams.SearchCacheBudgetGBRatio
+		loadNumThreadRatio = params.AutoIndexConfig.BigDataExtraParams.LoadNumThreadRatio
+		beamWidthRatio = params.AutoIndexConfig.BigDataExtraParams.BeamWidthRatio
+		log.Warn("after auto: " + fmt.Sprintln(searchCacheBudgetGBRatio))
 	}
 
 	indexParams[SearchCacheBudgetKey] = fmt.Sprintf("%f",
