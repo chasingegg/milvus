@@ -926,11 +926,13 @@ func (node *QueryNode) searchWithDmlChannel(ctx context.Context, req *querypb.Se
 		}
 		switch plan.GetNode().(type) {
 		case *planpb.PlanNode_VectorAnns:
+			withFilter := (plan.GetVectorAnns().GetPredicates() != nil)
 			qinfo := plan.GetVectorAnns().GetQueryInfo()
 			paramMap := map[string]interface{}{
 				common.TopKKey:        qinfo.GetTopk(),
 				common.SearchParamKey: qinfo.GetSearchParams(),
 				common.SegmentNumKey:  estSegmentNum,
+				common.WithFilterKey:  withFilter,
 			}
 			err := node.queryHook.Run(paramMap)
 			if err != nil {
@@ -945,7 +947,9 @@ func (node *QueryNode) searchWithDmlChannel(ctx context.Context, req *querypb.Se
 				failRet.Status.Reason = err.Error()
 				return failRet, nil
 			}
+
 			req.Req.SerializedExprPlan = SerializedExprPlan
+			log.Debug("optimized search params done", zap.Any("queryInfo", qinfo))
 		}
 	}
 
