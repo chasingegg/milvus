@@ -21,7 +21,7 @@ OS := $(shell uname -s)
 ARCH := $(shell arch)
 mode = Release
 disk_index = OFF
-opensimd = OFF
+opensimd = ON
 
 export GIT_BRANCH=master
 
