@@ -26,6 +26,8 @@
 #include "knowhere/index/vector_index/ConfAdapterMgr.h"
 #include "knowhere/index/vector_index/adapter/VectorAdapter.h"
 #include "common/Slice.h"
+#include <iostream>
+#include <chrono>
 
 namespace milvus::index {
 
@@ -158,6 +160,8 @@ VectorMemIndex::Query(const DatasetPtr dataset, const SearchInfo& search_info, c
     Config search_conf = search_info.search_params_;
     auto topk = search_info.topk_;
     // TODO :: check dim of search data
+    auto t1 = std::chrono::high_resolution_clock::now();
+
     auto final = [&] {
         knowhere::SetMetaTopk(search_conf, topk);
         knowhere::SetMetaMetricType(search_conf, GetMetricType());
@@ -166,6 +170,8 @@ VectorMemIndex::Query(const DatasetPtr dataset, const SearchInfo& search_info, c
         return index_->Query(dataset, search_conf, bitset);
     }();
 
+    auto t2 = std::chrono::high_resolution_clock::now();
+    std::cout << "knowhere cost: " << std::chrono::duration_cast<std::chrono::nanoseconds>(t2-t1).count() << std::endl;
     auto ids = knowhere::GetDatasetIDs(final);
     float* distances = (float*)knowhere::GetDatasetDistance(final);
 

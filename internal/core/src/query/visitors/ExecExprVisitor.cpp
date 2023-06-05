@@ -17,6 +17,8 @@
 #include <unordered_set>
 #include <utility>
 #include <boost/variant.hpp>
+#include <chrono>
+#include <iostream>
 
 #include "arrow/type_fwd.h"
 #include "common/Json.h"
@@ -226,6 +228,7 @@ AssembleChunk(const std::vector<FixedVector<bool>>& results) {
 template <typename T, typename IndexFunc, typename ElementFunc>
 auto
 ExecExprVisitor::ExecRangeVisitorImpl(FieldId field_id, IndexFunc index_func, ElementFunc element_func) -> BitsetType {
+    auto t1 = std::chrono::high_resolution_clock::now();
     auto& schema = segment_.get_schema();
     auto& field_meta = schema[field_id];
     auto indexing_barrier = segment_.num_chunk_index(field_id);
@@ -255,6 +258,8 @@ ExecExprVisitor::ExecRangeVisitorImpl(FieldId field_id, IndexFunc index_func, El
         results.emplace_back(std::move(chunk_res));
     }
     auto final_result = AssembleChunk(results);
+    auto t2 = std::chrono::high_resolution_clock::now();
+    std::cout << "expr cost: " << std::chrono::duration_cast<std::chrono::nanoseconds>(t2-t1).count() << std::endl;
     AssertInfo(final_result.size() == row_count_, "[ExecExprVisitor]Final result size not equal to row count");
     return final_result;
 }
