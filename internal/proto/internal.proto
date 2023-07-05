@@ -101,6 +101,11 @@ message SearchRequest {
   string metricType = 16;
   bool ignoreGrowing = 17; // Optional
   string username = 18;
+  int32 dim = 19;
+  int32 useClusterInfo = 20;
+  float clusterBasedFilterRate = 21;
+  float clusterAlpha = 22;
+  repeated float clusterSearchParamList = 23;
 }
 
 message SearchResults {

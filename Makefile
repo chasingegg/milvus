@@ -51,10 +51,10 @@ GOFUMPT_VERSION := 0.5.0
 GOFUMPT_OUTPUT := $(shell $(INSTALL_PATH)/gofumpt --version 2>/dev/null)
 INSTALL_GOFUMPT := $(findstring $(GOFUMPT_VERSION),$(GOFUMPT_OUTPUT))
 
-index_engine = knowhere
+index_engine = cardinal
 
 export GIT_BRANCH=master
-
+ENABLE_AZURE=false
 ifeq (${ENABLE_AZURE}, false)
 	AZURE_OPTION := -Z
 endif

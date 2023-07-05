@@ -26,6 +26,7 @@ SearchOnSealedIndex(const Schema& schema,
                     const SearchInfo& search_info,
                     const void* query_data,
                     int64_t num_queries,
+                    int64_t segment_id,
                     const BitsetView& bitset,
                     SearchResult& result) {
     auto topk = search_info.topk_;
@@ -47,7 +48,7 @@ SearchOnSealedIndex(const Schema& schema,
         auto vec_index =
             dynamic_cast<index::VectorIndex*>(field_indexing->indexing_.get());
         auto index_type = vec_index->GetIndexType();
-        return vec_index->Query(ds, search_info, bitset);
+        return vec_index->Query(ds, search_info, bitset, segment_id);
     }();
 
     float* distances = final->distances_.data();

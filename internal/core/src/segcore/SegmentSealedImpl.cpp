@@ -646,6 +646,7 @@ SegmentSealedImpl::vector_search(SearchInfo& search_info,
                                    binlog_search_info,
                                    query_data,
                                    query_count,
+                                   id_,
                                    bitset,
                                    output);
         milvus::tracer::AddEvent(
@@ -659,6 +660,7 @@ SegmentSealedImpl::vector_search(SearchInfo& search_info,
                                    search_info,
                                    query_data,
                                    query_count,
+                                   id_,
                                    bitset,
                                    output);
         milvus::tracer::AddEvent("finish_searching_vector_index");

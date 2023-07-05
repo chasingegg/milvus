@@ -69,7 +69,8 @@ class VectorDiskAnnIndex : public VectorIndex {
     std::unique_ptr<SearchResult>
     Query(const DatasetPtr dataset,
           const SearchInfo& search_info,
-          const BitsetView& bitset) override;
+          const BitsetView& bitset,
+          int64_t segment_id = -1) override;
 
     const bool
     HasRawData() const override;

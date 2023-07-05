@@ -131,7 +131,7 @@ func Retrieve(ctx context.Context, manager *Manager, plan *RetrievePlan, req *qu
 
 	if req.GetScope() == querypb.DataScope_Historical {
 		SegType = SegmentTypeSealed
-		retrieveSegments, err = validateOnHistorical(ctx, manager, collID, nil, segIDs)
+		retrieveSegments, err = validateOnHistorical(ctx, manager, collID, nil, segIDs, nil)
 	} else {
 		SegType = SegmentTypeGrowing
 		retrieveSegments, err = validateOnStream(ctx, manager, collID, nil, segIDs)
@@ -156,7 +156,7 @@ func RetrieveStream(ctx context.Context, manager *Manager, plan *RetrievePlan, r
 
 	if req.GetScope() == querypb.DataScope_Historical {
 		SegType = SegmentTypeSealed
-		retrieveSegments, err = validateOnHistorical(ctx, manager, collID, nil, segIDs)
+		retrieveSegments, err = validateOnHistorical(ctx, manager, collID, nil, segIDs, nil)
 	} else {
 		SegType = SegmentTypeGrowing
 		retrieveSegments, err = validateOnStream(ctx, manager, collID, nil, segIDs)

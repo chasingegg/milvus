@@ -99,7 +99,7 @@ func searchSegments(ctx context.Context, segments []Segment, segType SegmentType
 // if segIDs is specified, it will only search on the segments specified by the segIDs.
 // if partIDs is empty, it means all the partitions of the loaded collection or all the partitions loaded.
 func SearchHistorical(ctx context.Context, manager *Manager, searchReq *SearchRequest, collID int64, partIDs []int64, segIDs []int64) ([]*SearchResult, []Segment, error) {
-	segments, err := validateOnHistorical(ctx, manager, collID, partIDs, segIDs)
+	segments, err := validateOnHistorical(ctx, manager, collID, partIDs, segIDs, searchReq)
 	if err != nil {
 		return nil, nil, err
 	}

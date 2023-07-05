@@ -266,7 +266,7 @@ queryNode:
     # And this value should be a number greater than 1 and less than 32.
     chunkRows: 1024 # The number of vectors in a chunk.
     interimIndex: # build a vector temperate index for growing segment or binlog to accelerate search
-      enableIndex: true
+      enableIndex: false
       nlist: 128 # segment index nlist
       nprobe: 16 # nprobe to search segment, based on your accuracy requirement, must smaller than nlist
   loadMemoryUsageFactor: 1 # The multiply factor of calculating the memory usage while loading segments
@@ -373,9 +373,9 @@ dataCoord:
     # MUST BE GREATER THAN OR EQUAL TO <smallProportion>!!!
     # During compaction, the size of segment # of rows is able to exceed segment max # of rows by (expansionRate-1) * 100%.
     expansionRate: 1.25
-  enableCompaction: true # Enable data segment compaction
+  enableCompaction: false # Enable data segment compaction
   compaction:
-    enableAutoCompaction: true
+    enableAutoCompaction: false
     rpcTimeout: 10 # compaction rpc request timeout in seconds
     maxParallelTaskNum: 10 # max parallel compaction task number
     indexBasedCompaction: true
@@ -500,7 +500,7 @@ common:
     BeamWidthRatio: 4
   gracefulTime: 5000 # milliseconds. it represents the interval (in ms) by which the request arrival time needs to be subtracted in the case of Bounded Consistency.
   gracefulStopTimeout: 1800 # seconds. it will force quit the server if the graceful stop process is not completed during this time.
-  storageType: opendal # please adjust in embedded Milvus: local
+  storageType: minio # please adjust in embedded Milvus: local
   # Default value: auto
   # Valid values: [auto, avx512, avx2, avx, sse4_2]
   # This configuration is only used by querynode and indexnode, it selects CPU instruction set for Searching and Index-building.

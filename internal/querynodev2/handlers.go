@@ -64,6 +64,7 @@ func loadGrowingSegments(ctx context.Context, delegator delegator.ShardDelegator
 					Statslogs:     segmentInfo.Statslogs,
 					Deltalogs:     segmentInfo.Deltalogs,
 					InsertChannel: segmentInfo.InsertChannel,
+					Params:        segmentInfo.GetParams(),
 				})
 			} else {
 				log.Info("skip segment which binlog is empty", zap.Int64("segmentID", segmentInfo.ID))
@@ -396,11 +397,12 @@ func (node *QueryNode) searchChannel(ctx context.Context, req *querypb.SearchReq
 		log.Warn("Query failed, failed to get shard delegator for search", zap.Error(err))
 		return nil, err
 	}
-	req, err = node.optimizeSearchParams(ctx, req, sd)
-	if err != nil {
-		log.Warn("failed to optimize search params", zap.Error(err))
-		return nil, err
-	}
+	// req, err := node.optimizeSearchParams(ctx, req, sd)
+	// if err != nil {
+	// 	log.Warn("failed to optimize search params", zap.Error(err))
+	// 	failRet.Status.Reason = err.Error()
+	// 	return failRet, err
+	// }
 	// do search
 	results, err := sd.Search(searchCtx, req)
 	if err != nil {

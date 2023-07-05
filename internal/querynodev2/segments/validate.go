@@ -29,7 +29,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/util/merr"
 )
 
-func validate(ctx context.Context, manager *Manager, collectionID int64, partitionIDs []int64, segmentIDs []int64, segmentFilter SegmentFilter) ([]Segment, error) {
+func validate(ctx context.Context, manager *Manager, collectionID int64, partitionIDs []int64, segmentIDs []int64, segmentFilter SegmentFilter, searchReq *SearchRequest) ([]Segment, error) {
 	var searchPartIDs []int64
 
 	collection := manager.Collection.Get(collectionID)
@@ -58,11 +58,19 @@ func validate(ctx context.Context, manager *Manager, collectionID int64, partiti
 	if len(searchPartIDs) == 0 && collection.GetLoadType() == querypb.LoadType_LoadCollection {
 		return []Segment{}, nil
 	}
+	finalSegmentIDs := make([]int64, 0, len(segmentIDs))
+	for _, segmentID := range segmentIDs {
+		if searchReq == nil {
+			finalSegmentIDs = append(finalSegmentIDs, segmentID)
+		} else if searchReq.plan.getFlag(segmentID) != 1 {
+			finalSegmentIDs = append(finalSegmentIDs, segmentID)
+		}
+	}
 
-	// validate segment
-	segments := make([]Segment, 0, len(segmentIDs))
+	//validate segment
+	segments := make([]Segment, 0, len(finalSegmentIDs))
 	var err error
-	if len(segmentIDs) == 0 {
+	if len(finalSegmentIDs) == 0 {
 		for _, partID := range searchPartIDs {
 			segments, err = manager.Segment.GetAndPinBy(WithPartition(partID), segmentFilter)
 			if err != nil {
@@ -70,7 +78,7 @@ func validate(ctx context.Context, manager *Manager, collectionID int64, partiti
 			}
 		}
 	} else {
-		segments, err = manager.Segment.GetAndPin(segmentIDs, segmentFilter)
+		segments, err = manager.Segment.GetAndPin(finalSegmentIDs, segmentFilter)
 		if err != nil {
 			return nil, err
 		}
@@ -84,10 +92,10 @@ func validate(ctx context.Context, manager *Manager, collectionID int64, partiti
 	return segments, nil
 }
 
-func validateOnHistorical(ctx context.Context, manager *Manager, collectionID int64, partitionIDs []int64, segmentIDs []int64) ([]Segment, error) {
-	return validate(ctx, manager, collectionID, partitionIDs, segmentIDs, WithType(SegmentTypeSealed))
+func validateOnHistorical(ctx context.Context, manager *Manager, collectionID int64, partitionIDs []int64, segmentIDs []int64, searchReq *SearchRequest) ([]Segment, error) {
+	return validate(ctx, manager, collectionID, partitionIDs, segmentIDs, WithType(SegmentTypeSealed), searchReq)
 }
 
 func validateOnStream(ctx context.Context, manager *Manager, collectionID int64, partitionIDs []int64, segmentIDs []int64) ([]Segment, error) {
-	return validate(ctx, manager, collectionID, partitionIDs, segmentIDs, WithType(SegmentTypeGrowing))
+	return validate(ctx, manager, collectionID, partitionIDs, segmentIDs, WithType(SegmentTypeGrowing), nil)
 }

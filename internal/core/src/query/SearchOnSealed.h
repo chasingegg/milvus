@@ -24,6 +24,7 @@ SearchOnSealedIndex(const Schema& schema,
                     const SearchInfo& search_info,
                     const void* query_data,
                     int64_t num_queries,
+                    int64_t segment_id,
                     const BitsetView& view,
                     SearchResult& result);
 

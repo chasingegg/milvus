@@ -18,8 +18,10 @@ package delegator
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
+	"strconv"
 
 	"github.com/cockroachdb/errors"
 	"github.com/samber/lo"
@@ -399,11 +401,32 @@ func (sd *shardDelegator) LoadSegments(ctx context.Context, req *querypb.LoadSeg
 	}
 
 	entries := lo.Map(req.GetInfos(), func(info *querypb.SegmentLoadInfo, _ int) SegmentEntry {
+		// parse params while loading segments
+		var floatSlice []float32
+		var clusterSize int64
+
+		params := funcutil.KeyValuePair2Map(info.GetParams())
+		
+		if v, ok := params["cluster.center"]; ok {
+			err := json.Unmarshal([]byte(v), &floatSlice)
+			if err != nil {
+				fmt.Println("Error:", err)
+			}
+		} else {
+			floatSlice = nil
+		}
+		if v, ok := params["cluster.size"]; ok {
+			clusterSize, _ = strconv.ParseInt(v, 10, 64)
+		} else {
+			fmt.Println("error cluster size")
+		}
 		return SegmentEntry{
 			SegmentID:   info.GetSegmentID(),
 			PartitionID: info.GetPartitionID(),
 			NodeID:      req.GetDstNodeID(),
 			Version:     req.GetVersion(),
+			Params:      floatSlice,
+			ClusterSize: clusterSize,
 		}
 	})
 	log.Debug("load delete...")

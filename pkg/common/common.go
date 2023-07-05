@@ -88,6 +88,12 @@ const (
 	SegmentNumKey  = "segment_num"
 	WithFilterKey  = "with_filter"
 	CollectionKey  = "collection"
+	ClusterRatio   = "cluster_ratio"
+	ClusterDis     = "cluster_dis"
+	ClusterSize    = "cluster_size"
+	ClusterAlpha   = "cluster_alpha"
+	ClusterParam   = "cluster_search_param_list"
+	Algo           = "algo"
 
 	IndexParamsKey = "params"
 	IndexTypeKey   = "index_type"

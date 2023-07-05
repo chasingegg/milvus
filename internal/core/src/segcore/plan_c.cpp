@@ -13,6 +13,7 @@
 #include "query/Plan.h"
 #include "segcore/Collection.h"
 #include "segcore/plan_c.h"
+#include <list>
 
 // Note: serialized_expr_plan is of binary format
 CStatus
@@ -86,6 +87,24 @@ GetTopK(CSearchPlan plan) {
     return res;
 }
 
+void
+SetTopK(CSearchPlan plan, int64_t topk) {
+    auto search_plan = static_cast<milvus::query::Plan*>(plan);
+    search_plan->plan_node_->search_info_.topk_ = topk;
+}
+
+uint8_t
+GetFlag(CSearchPlan plan, int64_t segment_id) {
+    auto res = milvus::query::GetFlag((milvus::query::Plan*)plan, segment_id);
+    return res;
+}
+
+void
+SetFlag(CSearchPlan plan, int64_t segment_id, unsigned char flag) {
+    auto search_plan = static_cast<milvus::query::Plan*>(plan);
+    search_plan->plan_node_->search_info_.segment_map_[segment_id] = flag;
+}
+
 CStatus
 GetFieldID(CSearchPlan plan, int64_t* field_id) {
     try {
@@ -111,6 +130,12 @@ SetMetricType(CSearchPlan plan, const char* metric_type) {
         search_plan->plan_node_->search_info_.metric_type_ =
             std::string(metric_type);
     }
+}
+
+void
+SetEfs(CSearchPlan plan, const char* efs) {
+    auto search_plan = static_cast<milvus::query::Plan*>(plan);
+    search_plan->plan_node_->search_info_.search_params_["efs"] = nlohmann::json::parse(std::string(efs));
 }
 
 void

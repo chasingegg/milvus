@@ -118,7 +118,9 @@ func (t *SearchTask) Execute() error {
 
 	req := t.req
 	t.combinePlaceHolderGroups()
-	searchReq, err := segments.NewSearchRequest(t.collection, req, t.placeholderGroup)
+
+	// NewSearchRequest / shared by all segments
+	searchReq, err := segments.NewSearchRequest(t.collection, req, t.topk, t.placeholderGroup)
 	if err != nil {
 		return err
 	}
@@ -128,6 +130,7 @@ func (t *SearchTask) Execute() error {
 		results          []*segments.SearchResult
 		searchedSegments []segments.Segment
 	)
+	// log.Info("sids ", zap.Any("sid", req.GetSegmentIDs()))
 	if req.GetScope() == querypb.DataScope_Historical {
 		results, searchedSegments, err = segments.SearchHistorical(
 			t.ctx,
@@ -250,7 +253,7 @@ func (t *SearchTask) Merge(other *SearchTask) bool {
 	ratio := float64(after) / float64(pre)
 
 	// Check mergeable
-	if t.req.GetReq().GetDbID() != other.req.GetReq().GetDbID() ||
+	if !paramtable.Get().QueryNodeCfg.GroupEnabled.GetAsBool() || t.req.GetReq().GetDbID() != other.req.GetReq().GetDbID() ||
 		t.req.GetReq().GetCollectionID() != other.req.GetReq().GetCollectionID() ||
 		t.req.GetReq().GetDslType() != other.req.GetReq().GetDslType() ||
 		t.req.GetDmlChannels()[0] != other.req.GetDmlChannels()[0] ||
@@ -266,10 +269,17 @@ func (t *SearchTask) Merge(other *SearchTask) bool {
 	t.groupSize += other.groupSize
 	t.topk = maxTopk
 	t.nq += otherNq
+	t.req.Req.Nq += otherNq
 	t.originTopks = append(t.originTopks, other.originTopks...)
 	t.originNqs = append(t.originNqs, other.originNqs...)
 	t.others = append(t.others, other)
 	other.merged = true
+
+	// merge ef array
+	if len(t.req.Efs) > 0 && len(other.req.Efs) > 0 {
+		t.req.Efs = append(t.req.Efs, other.req.Efs...)
+		// fmt.Println("merge: " + fmt.Sprint(t.req.Efs) + " " + fmt.Sprint(topk) + " " + fmt.Sprint(other.topk))
+	}
 
 	return true
 }

@@ -86,6 +86,15 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
     auto src_data = ph.get_blob<EmbeddedType<VectorType>>();
     auto num_queries = ph.num_of_queries_;
 
+    // vector search param is zero, skip calculation
+    // auto segment_id = segment->get_segment_id();
+
+    // if (node.search_info_.segment_map_.count(segment_id)) {
+    //     search_result_opt_ =
+    //         empty_search_result(num_queries, node.search_info_);
+    //     return;
+    // }
+
     // TODO: add API to unify row_count
     // auto row_count = segment->get_row_count();
     auto active_count = segment->get_active_count(timestamp_);

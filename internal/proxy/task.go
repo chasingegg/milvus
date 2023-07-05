@@ -42,16 +42,20 @@ import (
 )
 
 const (
-	IgnoreGrowingKey     = "ignore_growing"
-	ReduceStopForBestKey = "reduce_stop_for_best"
-	AnnsFieldKey         = "anns_field"
-	TopKKey              = "topk"
-	NQKey                = "nq"
-	MetricTypeKey        = common.MetricTypeKey
-	SearchParamsKey      = "params"
-	RoundDecimalKey      = "round_decimal"
-	OffsetKey            = "offset"
-	LimitKey             = "limit"
+	IgnoreGrowingKey                = "ignore_growing"
+	ReduceStopForBestKey            = "reduce_stop_for_best"
+	AnnsFieldKey                    = "anns_field"
+	TopKKey                         = "topk"
+	NQKey                           = "nq"
+	MetricTypeKey                   = common.MetricTypeKey
+	SearchParamsKey                 = "params"
+	RoundDecimalKey                 = "round_decimal"
+	OffsetKey                       = "offset"
+	LimitKey                        = "limit"
+	UseClusterInfoKey               = "use_cluster_info"
+	ClusterBasedFilterRatio         = "cluster_based_filter_ratio"
+	ClusterAlpha                    = "cluster_alpha"
+	ClusterSearchParamList          = "cluster_search_param_list"
 
 	InsertTaskName                = "InsertTask"
 	CreateCollectionTaskName      = "CreateCollectionTask"

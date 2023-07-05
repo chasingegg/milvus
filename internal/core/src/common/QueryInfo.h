@@ -27,6 +27,7 @@ struct SearchInfo {
     FieldId field_id_;
     MetricType metric_type_;
     knowhere::Json search_params_;
+    std::unordered_map<int64_t, bool> segment_map_;
 };
 
 using SearchInfoPtr = std::shared_ptr<SearchInfo>;

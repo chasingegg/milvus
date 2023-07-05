@@ -258,6 +258,7 @@ message SegmentLoadInfo {
   msg.MsgPosition start_position = 14;
   msg.MsgPosition delta_position = 15;
   int64 readableVersion = 16;
+  repeated common.KeyValuePair params = 17;
 }
 
 message FieldIndexInfo {
@@ -317,6 +318,8 @@ message SearchRequest {
   bool from_shard_leader = 4;
   DataScope scope = 5; // All, Streaming, Historical
   int32 total_channel_num = 6;
+  int64 topk = 7; // for search params rewrite  
+  repeated int64 efs = 8;
 }
 
 message QueryRequest {

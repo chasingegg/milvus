@@ -42,6 +42,15 @@ GetNumOfQueries(CPlaceholderGroup placeholder_group);
 int64_t
 GetTopK(CSearchPlan plan);
 
+void
+SetTopK(CSearchPlan plan, int64_t topk);
+
+unsigned char
+GetFlag(CSearchPlan plan, int64_t segment_id);
+
+void
+SetFlag(CSearchPlan plan, int64_t segment_id, unsigned char flag);
+
 CStatus
 GetFieldID(CSearchPlan plan, int64_t* field_id);
 
@@ -50,6 +59,9 @@ GetMetricType(CSearchPlan plan);
 
 void
 SetMetricType(CSearchPlan plan, const char* metric_type);
+
+void
+SetEfs(CSearchPlan plan, const char* efs);
 
 void
 DeleteSearchPlan(CSearchPlan plan);

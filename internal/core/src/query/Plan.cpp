@@ -86,6 +86,11 @@ GetTopK(const Plan* plan) {
     return plan->plan_node_->search_info_.topk_;
 }
 
+unsigned char
+GetFlag(const Plan* plan, int64_t segment_id) {
+    return plan->plan_node_->search_info_.segment_map_[segment_id];
+}
+
 int64_t
 GetFieldID(const Plan* plan) {
     return plan->plan_node_->search_info_.field_id_.get();

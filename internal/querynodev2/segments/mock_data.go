@@ -1205,7 +1205,7 @@ func genSearchPlanAndRequests(collection *Collection, segments []int64, indexTyp
 		FromShardLeader: true,
 		Scope:           querypb.DataScope_Historical,
 	}
-	return NewSearchRequest(collection, queryReq, queryReq.Req.GetPlaceholderGroup())
+	return NewSearchRequest(collection, queryReq, 0, queryReq.Req.GetPlaceholderGroup())
 }
 
 func genInsertMsg(collection *Collection, partitionID, segment int64, numRows int) (*msgstream.InsertMsg, error) {

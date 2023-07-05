@@ -26,12 +26,16 @@ package segments
 import "C"
 
 import (
+	"encoding/json"
 	"fmt"
+	// "time"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
+	// "go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/proto/querypb"
+	// "github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/util/merr"
 	. "github.com/milvus-io/milvus/pkg/util/typeutil"
 )
@@ -41,13 +45,15 @@ type SearchPlan struct {
 	cSearchPlan C.CSearchPlan
 }
 
-func createSearchPlanByExpr(col *Collection, expr []byte, metricType string) (*SearchPlan, error) {
+func createSearchPlanByExpr(col *Collection, expr []byte, metricType string, segmentIds []int64, topk int64, efs [][]int64) (*SearchPlan, error) {
 	if col.collectionPtr == nil {
 		return nil, errors.New("nil collection ptr, collectionID = " + fmt.Sprintln(col.id))
 	}
+
+	// fmt.Println("expr size " + fmt.Sprint(len(expr)))
+
 	var cPlan C.CSearchPlan
 	status := C.CreateSearchPlanByExpr(col.collectionPtr, unsafe.Pointer(&expr[0]), (C.int64_t)(len(expr)), &cPlan)
-
 	err1 := HandleCStatus(&status, "Create Plan by expr failed")
 	if err1 != nil {
 		return nil, err1
@@ -59,12 +65,92 @@ func createSearchPlanByExpr(col *Collection, expr []byte, metricType string) (*S
 	} else {
 		newPlan.setMetricType(col.GetMetricType())
 	}
+	newPlan.setTopK(topk)
+	if len(efs) > 0 {
+		efMap := make(map[int64][]int64)
+		for i, ef := range efs {
+			check_zero := true
+			for _, eff := range ef {
+				if eff != 0 {
+					check_zero = false
+					break
+				}
+			}
+			// only if we have to search, we search
+			if check_zero == true {
+				newPlan.setFlag(segmentIds[i], 1)
+			} else {
+				efMap[segmentIds[i]] = ef
+			}
+		}
+		efss, err := json.Marshal(efMap)
+		if err != nil {
+			return nil, err
+		}
+		newPlan.setEfs(string(efss))
+	}
 	return newPlan, nil
+
+	// plans := make([]*SearchPlan, 0, len(efs))
+
+	// for _, ef := range efs {
+	// 	var cPlan C.CSearchPlan
+
+	// 	// start := time.Now()
+	// 	status := C.CreateSearchPlanByExpr(col.collectionPtr, unsafe.Pointer(&expr[0]), (C.int64_t)(len(expr)), &cPlan)
+	// 	// elapse := time.Since(start) / time.Nanosecond
+	// 	// log.Info("OptimizeSearchParam time cost", zap.Int64("ns", elapse.Nanoseconds()))
+
+	// 	err1 := HandleCStatus(&status, "Create Plan by expr failed")
+	// 	if err1 != nil {
+	// 		return nil, err1
+	// 	}
+	// 	var newPlan = &SearchPlan{cSearchPlan: cPlan}
+	// 	if len(metricType) != 0 {
+	// 		newPlan.setMetricType(metricType)
+	// 	} else {
+	// 		newPlan.setMetricType(col.GetMetricType())
+	// 	}
+	
+	// 	newPlan.setTopK(topk)
+	
+	// 	efss, err := json.Marshal(ef)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	newPlan.setEfs(string(efss))
+	// 	plans = append(plans, newPlan)
+	// }
+
+	// return plans, nil
 }
 
 func (plan *SearchPlan) getTopK() int64 {
 	topK := C.GetTopK(plan.cSearchPlan)
 	return int64(topK)
+}
+
+func (plan *SearchPlan) setTopK(topK int64) {
+	cTopK := C.int64_t(topK)
+	C.SetTopK(plan.cSearchPlan, cTopK)
+}
+
+func (plan *SearchPlan) getFlag(segment int64) uint8 {
+	cSegment := C.int64_t(segment)
+	flag := C.GetFlag(plan.cSearchPlan, cSegment)
+	return uint8(flag)
+}
+
+func (plan *SearchPlan) setFlag(segment int64, flag uint8) {
+	cFlag := C.uchar(flag)
+	cSegment := C.int64_t(segment)
+	C.SetFlag(plan.cSearchPlan, cSegment, cFlag)
+}
+
+func (plan *SearchPlan) setEfs(efs string) {
+	efss := C.CString(efs)
+	defer C.free(unsafe.Pointer(efss))
+	C.SetEfs(plan.cSearchPlan, efss)
 }
 
 func (plan *SearchPlan) setMetricType(metricType string) {
@@ -91,12 +177,34 @@ type SearchRequest struct {
 	searchFieldID     UniqueID
 }
 
-func NewSearchRequest(collection *Collection, req *querypb.SearchRequest, placeholderGrp []byte) (*SearchRequest, error) {
+type CPlaceHolderGroup struct {
+	cPlaceholderGroup C.CPlaceholderGroup
+}
+
+func NewSearchRequest(collection *Collection, req *querypb.SearchRequest, topk int64, placeholderGrp []byte) (*SearchRequest, error) {
 	var err error
 	var plan *SearchPlan
 	metricType := req.GetReq().GetMetricType()
 	expr := req.Req.SerializedExprPlan
-	plan, err = createSearchPlanByExpr(collection, expr, metricType)
+
+	efs := req.GetEfs()
+
+	if (efs == nil || len(efs) == 0) && req.Req.GetUseClusterInfo() > 3 && req.Req.GetUseClusterInfo() != 10 {
+		return nil, errors.New("empty search param")
+	}
+
+	efss := make([][]int64, 0, len(req.GetSegmentIDs()))
+	if efs != nil {
+		for i := range req.GetSegmentIDs() {
+			tmp := make([]int64, 0, req.Req.GetNq())
+			for j := 0; j < int(req.Req.GetNq()); j++ {
+				tmp = append(tmp, efs[j * len(req.GetSegmentIDs()) + i])
+			}
+			efss = append(efss, tmp)
+		}
+	}
+	// fmt.Println("ef: " + fmt.Sprint(efs))
+	plan, err = createSearchPlanByExpr(collection, expr, metricType, req.GetSegmentIDs(), topk, efss)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +238,7 @@ func NewSearchRequest(collection *Collection, req *querypb.SearchRequest, placeh
 		searchFieldID:     int64(fieldID),
 	}
 
-	return ret, nil
+	return ret,  nil
 }
 
 func (req *SearchRequest) getNumOfQuery() int64 {
@@ -139,7 +247,10 @@ func (req *SearchRequest) getNumOfQuery() int64 {
 }
 
 func (req *SearchRequest) Plan() *SearchPlan {
-	return req.plan
+	if req.plan != nil {
+		return req.plan
+	}
+	return nil
 }
 
 func (req *SearchRequest) Delete() {

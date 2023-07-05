@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"regexp"
@@ -106,17 +107,17 @@ func getPartitionIDs(ctx context.Context, dbName string, collectionName string, 
 }
 
 // parseSearchInfo returns QueryInfo and offset
-func parseSearchInfo(searchParamsPair []*commonpb.KeyValuePair) (*planpb.QueryInfo, int64, error) {
+func parseSearchInfo(searchParamsPair []*commonpb.KeyValuePair) (*planpb.QueryInfo, int64, int64, error) {
 	topKStr, err := funcutil.GetAttrByKeyFromRepeatedKV(TopKKey, searchParamsPair)
 	if err != nil {
-		return nil, 0, errors.New(TopKKey + " not found in search_params")
+		return nil, 0, 0, errors.New(TopKKey + " not found in search_params")
 	}
 	topK, err := strconv.ParseInt(topKStr, 0, 64)
 	if err != nil {
-		return nil, 0, fmt.Errorf("%s [%s] is invalid", TopKKey, topKStr)
+		return nil, 0, 0, fmt.Errorf("%s [%s] is invalid", TopKKey, topKStr)
 	}
 	if err := validateTopKLimit(topK); err != nil {
-		return nil, 0, fmt.Errorf("%s [%d] is invalid, %w", TopKKey, topK, err)
+		return nil, 0, 0, fmt.Errorf("%s [%d] is invalid, %w", TopKKey, topK, err)
 	}
 
 	var offset int64
@@ -124,19 +125,19 @@ func parseSearchInfo(searchParamsPair []*commonpb.KeyValuePair) (*planpb.QueryIn
 	if err == nil {
 		offset, err = strconv.ParseInt(offsetStr, 0, 64)
 		if err != nil {
-			return nil, 0, fmt.Errorf("%s [%s] is invalid", OffsetKey, offsetStr)
+			return nil, 0, 0, fmt.Errorf("%s [%s] is invalid", OffsetKey, offsetStr)
 		}
 
 		if offset != 0 {
 			if err := validateTopKLimit(offset); err != nil {
-				return nil, 0, fmt.Errorf("%s [%d] is invalid, %w", OffsetKey, offset, err)
+				return nil, 0, 0, fmt.Errorf("%s [%d] is invalid, %w", OffsetKey, offset, err)
 			}
 		}
 	}
 
 	queryTopK := topK + offset
 	if err := validateTopKLimit(queryTopK); err != nil {
-		return nil, 0, fmt.Errorf("%s+%s [%d] is invalid, %w", OffsetKey, TopKKey, queryTopK, err)
+		return nil, 0, 0, fmt.Errorf("%s+%s [%d] is invalid, %w", OffsetKey, TopKKey, queryTopK, err)
 	}
 
 	metricType, err := funcutil.GetAttrByKeyFromRepeatedKV(common.MetricTypeKey, searchParamsPair)
@@ -151,22 +152,29 @@ func parseSearchInfo(searchParamsPair []*commonpb.KeyValuePair) (*planpb.QueryIn
 
 	roundDecimal, err := strconv.ParseInt(roundDecimalStr, 0, 64)
 	if err != nil {
-		return nil, 0, fmt.Errorf("%s [%s] is invalid, should be -1 or an integer in range [0, 6]", RoundDecimalKey, roundDecimalStr)
+		return nil, 0, 0, fmt.Errorf("%s [%s] is invalid, should be -1 or an integer in range [0, 6]", RoundDecimalKey, roundDecimalStr)
 	}
 
 	if roundDecimal != -1 && (roundDecimal > 6 || roundDecimal < 0) {
-		return nil, 0, fmt.Errorf("%s [%s] is invalid, should be -1 or an integer in range [0, 6]", RoundDecimalKey, roundDecimalStr)
+		return nil, 0, 0, fmt.Errorf("%s [%s] is invalid, should be -1 or an integer in range [0, 6]", RoundDecimalKey, roundDecimalStr)
 	}
-	searchParamStr, err := funcutil.GetAttrByKeyFromRepeatedKV(SearchParamsKey, searchParamsPair)
+	// searchParamStr, err := funcutil.GetAttrByKeyFromRepeatedKV(SearchParamsKey, searchParamsPair)
+	filterSearchParamsPair := make([]*commonpb.KeyValuePair, 0)
+	for _, pair := range searchParamsPair {
+		if pair.GetKey() != UseClusterInfoKey && pair.GetKey() != ClusterBasedFilterRatio && pair.GetKey() != ClusterAlpha && pair.GetKey() != ClusterSearchParamList {
+			filterSearchParamsPair = append(filterSearchParamsPair, &commonpb.KeyValuePair{Key: pair.GetKey(), Value: pair.GetValue()})
+		}
+	}
+	searchParamStr, err := funcutil.GetAttrByKeyFromRepeatedKV(SearchParamsKey, filterSearchParamsPair)
 	if err != nil {
 		searchParamStr = ""
 	}
 	return &planpb.QueryInfo{
-		Topk:         queryTopK,
+		// Topk:         queryTopK,
 		MetricType:   metricType,
 		SearchParams: searchParamStr,
 		RoundDecimal: roundDecimal,
-	}, offset, nil
+	}, queryTopK, offset, nil
 }
 
 func getOutputFieldIDs(schema *schemapb.CollectionSchema, outputFields []string) (outputFieldIDs []UniqueID, err error) {
@@ -277,6 +285,61 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 		return err
 	}
 	t.SearchRequest.OutputFieldsId = outputFieldIDs
+	vecFieldSchema, err2 := typeutil.GetVectorFieldSchema(t.schema)
+	if err2 != nil {
+		return errors.New(AnnsFieldKey + " not found in schema")
+	}
+
+	dim, err := funcutil.GetAttrByKeyFromRepeatedKV(DimKey, vecFieldSchema.GetTypeParams())
+	if err != nil {
+		return errors.New("fail to get dim from vector field schema")
+	}
+	intValue, _ := strconv.ParseInt(dim, 10, 32)
+	t.SearchRequest.Dim = int32(intValue)
+
+	searchPMap := funcutil.KeyValuePair2Map(t.request.GetSearchParams())
+	useClusterInfo, ok := searchPMap[UseClusterInfoKey]
+	if ok {
+		b, err := strconv.ParseInt(useClusterInfo, 0, 32)
+		if err != nil {
+			return errors.New("illegal search params useClusterInfo value, should be true or false")
+		}
+		t.SearchRequest.UseClusterInfo = int32(b)
+	} else {
+		t.SearchRequest.UseClusterInfo = 0
+	}
+
+	clusterBasedFilterRatio, ok := searchPMap[ClusterBasedFilterRatio]
+	if ok {
+		b, err := strconv.ParseFloat(clusterBasedFilterRatio, 32)
+		if err != nil {
+			return errors.New("illegal search params clusterBasedFilterRatio value, should be float")
+		}
+		t.SearchRequest.ClusterBasedFilterRate = float32(b)
+	} else {
+		t.SearchRequest.ClusterBasedFilterRate = 0.5
+	}
+
+	clusterAlpha, ok := searchPMap[ClusterAlpha]
+	if ok {
+		b, err := strconv.ParseFloat(clusterAlpha, 32)
+		if err != nil {
+			return errors.New("illegal search params clusterAlpha value, should be float")
+		}
+		t.SearchRequest.ClusterAlpha = float32(b)
+	} else {
+		t.SearchRequest.ClusterAlpha = 0
+	}
+
+	clusterSearchParamList, ok := searchPMap[ClusterSearchParamList]
+	if ok {
+		var b []float32
+		err := json.Unmarshal([]byte(clusterSearchParamList), &b)
+		if err != nil {
+			return errors.New("illegal clusterSearchParamList, json parse fail")
+		}
+		t.SearchRequest.ClusterSearchParamList = b
+	} 
 
 	partitionNames := t.request.GetPartitionNames()
 	if t.request.GetDslType() == commonpb.DslType_BoolExprV1 {
@@ -291,7 +354,7 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 			}
 			annsField = vecFieldSchema.Name
 		}
-		queryInfo, offset, err := parseSearchInfo(t.request.GetSearchParams())
+		queryInfo, queryTopK, offset, err := parseSearchInfo(t.request.GetSearchParams())
 		if err != nil {
 			return err
 		}
@@ -326,7 +389,8 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 
 		plan.OutputFieldIds = outputFieldIDs
 
-		t.SearchRequest.Topk = queryInfo.GetTopk()
+		// t.SearchRequest.Topk = queryInfo.GetTopk()
+		t.SearchRequest.Topk = queryTopK
 		t.SearchRequest.MetricType = queryInfo.GetMetricType()
 		t.SearchRequest.DslType = commonpb.DslType_BoolExprV1
 

@@ -327,6 +327,7 @@ SegmentGrowingImpl::vector_search(SearchInfo& search_info,
                                    search_info,
                                    query_data,
                                    query_count,
+                                   id_,
                                    bitset,
                                    output);
     } else {

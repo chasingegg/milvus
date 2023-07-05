@@ -55,6 +55,9 @@ CreateRetrievePlanByExpr(const Schema& schema,
 int64_t
 GetTopK(const Plan*);
 
+unsigned char
+GetFlag(const Plan*, int64_t segment_id);
+
 int64_t
 GetFieldID(const Plan* plan);
 

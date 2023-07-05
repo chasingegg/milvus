@@ -19,12 +19,15 @@ package delegator
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/golang/protobuf/proto"
+
 	"github.com/samber/lo"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -34,6 +37,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/querynodev2/cluster"
 	"github.com/milvus-io/milvus/internal/querynodev2/delegator/deletebuffer"
+	"github.com/milvus-io/milvus/internal/querynodev2/optimizers"
 	"github.com/milvus-io/milvus/internal/querynodev2/pkoracle"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments"
 	"github.com/milvus-io/milvus/internal/querynodev2/tsafe"
@@ -68,6 +72,9 @@ type ShardDelegator interface {
 	LoadSegments(ctx context.Context, req *querypb.LoadSegmentsRequest) error
 	ReleaseSegments(ctx context.Context, req *querypb.ReleaseSegmentsRequest, force bool) error
 	SyncTargetVersion(newVersion int64, growingInTarget []int64, sealedInTarget []int64, droppedInTarget []int64)
+	OptimizeSearchParamHelper(req *querypb.SearchRequest, distanceArrNq [][]SegmentDistanceStruct, sealedNum int) ([][]byte, int, error)
+	OptimizeSearchParamHelper2(req *querypb.SearchRequest, distanceArrNq [][]SegmentDistanceStruct, segmentIDMap map[UniqueID]int, sealedNum int) error
+	OptimizeSearchParam(req *querypb.SearchRequest, sealeds []SnapshotItem, sealedNum int) (*querypb.SearchRequest, []SnapshotItem, [][]byte, error)
 	GetTargetVersion() int64
 
 	// control
@@ -106,6 +113,16 @@ type shardDelegator struct {
 	loader      segments.Loader
 	tsCond      *sync.Cond
 	latestTsafe *atomic.Uint64
+	queryHook   optimizers.QueryHook
+}
+
+type QueryHook interface {
+	Optimize2(map[string]any) ([]int64, []int64, error)
+	Optimize(map[string]any) ([]string, []int64, error)
+	Run(map[string]any) error
+	Init(string) error
+	InitTuningConfig(map[string]string) error
+	DeleteTuningConfig(string) error
 }
 
 // getLogger returns the zap logger with pre-defined shard attributes.
@@ -155,8 +172,21 @@ func (sd *shardDelegator) SyncDistribution(ctx context.Context, entries ...Segme
 	sd.distribution.AddDistributions(entries...)
 }
 
-func (sd *shardDelegator) modifySearchRequest(req *querypb.SearchRequest, scope querypb.DataScope, segmentIDs []int64, targetID int64) *querypb.SearchRequest {
+func (sd *shardDelegator) modifySearchRequest(req *querypb.SearchRequest, scope querypb.DataScope, segmentIDs []int64, targetID int64, plan []byte) *querypb.SearchRequest {
 	nodeReq := proto.Clone(req).(*querypb.SearchRequest)
+	nodeReq.Scope = scope
+	nodeReq.Req.Base.TargetID = targetID
+	nodeReq.SegmentIDs = segmentIDs
+	nodeReq.FromShardLeader = true
+	nodeReq.DmlChannels = []string{sd.vchannelName}
+	if plan != nil {
+		nodeReq.Req.SerializedExprPlan = plan
+	}
+	return nodeReq
+}
+
+func (sd *shardDelegator) modifyQueryRequest(req *querypb.QueryRequest, scope querypb.DataScope, segmentIDs []int64, targetID int64, plan []byte) *querypb.QueryRequest {
+	nodeReq := proto.Clone(req).(*querypb.QueryRequest)
 	nodeReq.Scope = scope
 	nodeReq.Req.Base.TargetID = targetID
 	nodeReq.SegmentIDs = segmentIDs
@@ -165,14 +195,16 @@ func (sd *shardDelegator) modifySearchRequest(req *querypb.SearchRequest, scope 
 	return nodeReq
 }
 
-func (sd *shardDelegator) modifyQueryRequest(req *querypb.QueryRequest, scope querypb.DataScope, segmentIDs []int64, targetID int64) *querypb.QueryRequest {
-	nodeReq := proto.Clone(req).(*querypb.QueryRequest)
-	nodeReq.Scope = scope
-	nodeReq.Req.Base.TargetID = targetID
-	nodeReq.SegmentIDs = segmentIDs
-	nodeReq.FromShardLeader = true
-	nodeReq.DmlChannels = []string{sd.vchannelName}
-	return nodeReq
+func Deserialize(data []byte) []float32 {
+	vectorLen := len(data) / 4 // Each float32 occupies 4 bytes
+	fv := make([]float32, vectorLen)
+
+	for i := 0; i < vectorLen; i++ {
+		bits := binary.LittleEndian.Uint32(data[i*4 : (i+1)*4])
+		fv[i] = math.Float32frombits(bits)
+	}
+
+	return fv
 }
 
 // Search preforms search operation on shard.
@@ -226,11 +258,22 @@ func (sd *shardDelegator) Search(ctx context.Context, req *querypb.SearchRequest
 		zap.Int("sealedNum", sealedNum),
 		zap.Int("growingNum", len(growing)),
 	)
-	tasks, err := organizeSubTask(ctx, req, sealed, growing, sd, sd.modifySearchRequest)
+	start := time.Now()
+	req, sealed, serializedPlans, err := sd.OptimizeSearchParam(req, sealed, sealedNum)
+	elapse := time.Since(start) / time.Nanosecond
+	log.Debug("OptimizeSearchParam time cost", zap.Int64("ns", elapse.Nanoseconds()))
+
+	if err != nil {
+		log.Warn("optimize search failed", zap.Error(err))
+		return nil, err
+	}
+
+	tasks, err := organizeSubTask(ctx, req, sealed, growing, serializedPlans, sd, sd.modifySearchRequest)
 	if err != nil {
 		log.Warn("Search organizeSubTask failed", zap.Error(err))
 		return nil, err
 	}
+	log.Debug("tasks", zap.Int("task num", len(tasks)))
 
 	results, err := executeSubTasks(ctx, tasks, func(ctx context.Context, req *querypb.SearchRequest, worker cluster.Worker) (*internalpb.SearchResults, error) {
 		return worker.SearchSegments(ctx, req)
@@ -292,7 +335,7 @@ func (sd *shardDelegator) QueryStream(ctx context.Context, req *querypb.QueryReq
 		zap.Int("sealedNum", len(sealed)),
 		zap.Int("growingNum", len(growing)),
 	)
-	tasks, err := organizeSubTask(ctx, req, sealed, growing, sd, sd.modifyQueryRequest)
+	tasks, err := organizeSubTask(ctx, req, sealed, growing, nil, sd, sd.modifyQueryRequest)
 	if err != nil {
 		log.Warn("query organizeSubTask failed", zap.Error(err))
 		return err
@@ -361,7 +404,7 @@ func (sd *shardDelegator) Query(ctx context.Context, req *querypb.QueryRequest) 
 		zap.Int("sealedNum", sealedNum),
 		zap.Int("growingNum", len(growing)),
 	)
-	tasks, err := organizeSubTask(ctx, req, sealed, growing, sd, sd.modifyQueryRequest)
+	tasks, err := organizeSubTask(ctx, req, sealed, growing, nil, sd, sd.modifyQueryRequest)
 	if err != nil {
 		log.Warn("query organizeSubTask failed", zap.Error(err))
 		return nil, err
@@ -409,7 +452,7 @@ func (sd *shardDelegator) GetStatistics(ctx context.Context, req *querypb.GetSta
 	}
 	defer sd.distribution.Unpin(version)
 
-	tasks, err := organizeSubTask(ctx, req, sealed, growing, sd, func(req *querypb.GetStatisticsRequest, scope querypb.DataScope, segmentIDs []int64, targetID int64) *querypb.GetStatisticsRequest {
+	tasks, err := organizeSubTask(ctx, req, sealed, growing, nil, sd, func(req *querypb.GetStatisticsRequest, scope querypb.DataScope, segmentIDs []int64, targetID int64, plan []byte) *querypb.GetStatisticsRequest {
 		nodeReq := proto.Clone(req).(*querypb.GetStatisticsRequest)
 		nodeReq.GetReq().GetBase().TargetID = targetID
 		nodeReq.Scope = scope
@@ -439,11 +482,11 @@ type subTask[T any] struct {
 	worker   cluster.Worker
 }
 
-func organizeSubTask[T any](ctx context.Context, req T, sealed []SnapshotItem, growing []SegmentEntry, sd *shardDelegator, modify func(T, querypb.DataScope, []int64, int64) T) ([]subTask[T], error) {
+func organizeSubTask[T any](ctx context.Context, req T, sealed []SnapshotItem, growing []SegmentEntry, serializedPlans [][]byte, sd *shardDelegator, modify func(T, querypb.DataScope, []int64, int64, []byte) T) ([]subTask[T], error) {
 	log := sd.getLogger(ctx)
 	result := make([]subTask[T], 0, len(sealed)+1)
 
-	packSubTask := func(segments []SegmentEntry, workerID int64, scope querypb.DataScope) error {
+	packSubTask := func(segments []SegmentEntry, plan []byte, workerID int64, scope querypb.DataScope) error {
 		segmentIDs := lo.Map(segments, func(item SegmentEntry, _ int) int64 {
 			return item.SegmentID
 		})
@@ -451,7 +494,7 @@ func organizeSubTask[T any](ctx context.Context, req T, sealed []SnapshotItem, g
 			return nil
 		}
 		// update request
-		req := modify(req, scope, segmentIDs, workerID)
+		req := modify(req, scope, segmentIDs, workerID, plan)
 
 		worker, err := sd.workerManager.GetWorker(ctx, workerID)
 		if err != nil {
@@ -470,14 +513,26 @@ func organizeSubTask[T any](ctx context.Context, req T, sealed []SnapshotItem, g
 		return nil
 	}
 
-	for _, entry := range sealed {
-		err := packSubTask(entry.Segments, entry.NodeID, querypb.DataScope_Historical)
-		if err != nil {
-			return nil, err
+	for i, entry := range sealed {
+		if serializedPlans == nil {
+			err := packSubTask(entry.Segments, nil, entry.NodeID, querypb.DataScope_Historical)
+			if err != nil {
+				return nil, err
+			}
+		} else if len(serializedPlans) == 1 {
+			err := packSubTask(entry.Segments, serializedPlans[0], entry.NodeID, querypb.DataScope_Historical)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			err := packSubTask(entry.Segments, serializedPlans[i], entry.NodeID, querypb.DataScope_Historical)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
-	packSubTask(growing, paramtable.GetNodeID(), querypb.DataScope_Streaming)
+	packSubTask(growing, nil, paramtable.GetNodeID(), querypb.DataScope_Streaming)
 
 	return result, nil
 }
@@ -636,8 +691,7 @@ func (sd *shardDelegator) Close() {
 // NewShardDelegator creates a new ShardDelegator instance with all fields initialized.
 func NewShardDelegator(ctx context.Context, collectionID UniqueID, replicaID UniqueID, channel string, version int64,
 	workerManager cluster.Manager, manager *segments.Manager, tsafeManager tsafe.Manager, loader segments.Loader,
-	factory msgstream.Factory, startTs uint64,
-) (ShardDelegator, error) {
+	factory msgstream.Factory, startTs uint64, queryHook optimizers.QueryHook) (ShardDelegator, error) {
 	log := log.Ctx(ctx).With(zap.Int64("collectionID", collectionID),
 		zap.Int64("replicaID", replicaID),
 		zap.String("channel", channel),
@@ -669,6 +723,7 @@ func NewShardDelegator(ctx context.Context, collectionID UniqueID, replicaID Uni
 		latestTsafe:    atomic.NewUint64(startTs),
 		loader:         loader,
 		factory:        factory,
+		queryHook:      queryHook,
 	}
 	m := sync.Mutex{}
 	sd.tsCond = sync.NewCond(&m)

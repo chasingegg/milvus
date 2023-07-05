@@ -84,6 +84,8 @@ type SegmentEntry struct {
 	PartitionID   UniqueID
 	Version       int64
 	TargetVersion int64
+	Params        []float32
+	ClusterSize   int64
 }
 
 // NewDistribution creates a new distribution instance with all field initialized.

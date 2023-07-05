@@ -450,6 +450,7 @@ func (m *meta) UpdateFlushSegmentsInfo(
 	binlogs, statslogs, deltalogs []*datapb.FieldBinlog,
 	checkpoints []*datapb.CheckPoint,
 	startPositions []*datapb.SegmentStartPosition,
+	segmentParams []*commonpb.KeyValuePair,
 ) error {
 	log.Debug("meta update: update flush segments info",
 		zap.Int64("segmentId", segmentID),
@@ -565,6 +566,7 @@ func (m *meta) UpdateFlushSegmentsInfo(
 				zap.Int64("segment bin log row count (correct)", count))
 			s.NumOfRows = count
 		}
+		s.Params = segmentParams
 		modSegments[segmentID] = s
 	} else {
 		for _, cp := range checkpoints {

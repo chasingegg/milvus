@@ -197,13 +197,20 @@ template <typename T>
 std::unique_ptr<SearchResult>
 VectorDiskAnnIndex<T>::Query(const DatasetPtr dataset,
                              const SearchInfo& search_info,
-                             const BitsetView& bitset) {
+                             const BitsetView& bitset,
+                             int64_t segment_id) {
     AssertInfo(GetMetricType() == search_info.metric_type_,
                "Metric type of field index isn't the same with search info");
     auto num_queries = dataset->GetRows();
     auto topk = search_info.topk_;
 
     knowhere::Json search_config = search_info.search_params_;
+
+    if (search_info.search_params_.contains("efs")) {
+        // LOG_SEGCORE_INFO_ << search_config["efs"];
+        search_config["efs"] = search_info.search_params_["efs"][std::to_string(segment_id)];
+        // LOG_SEGCORE_INFO_ << search_config["efs"];
+    }
 
     search_config[knowhere::meta::TOPK] = topk;
     search_config[knowhere::meta::METRIC_TYPE] = GetMetricType();

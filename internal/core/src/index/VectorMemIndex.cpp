@@ -289,7 +289,8 @@ VectorMemIndex::AddWithDataset(const DatasetPtr& dataset,
 std::unique_ptr<SearchResult>
 VectorMemIndex::Query(const DatasetPtr dataset,
                       const SearchInfo& search_info,
-                      const BitsetView& bitset) {
+                      const BitsetView& bitset,
+                      int64_t segment_id) {
     //    AssertInfo(GetMetricType() == search_info.metric_type_,
     //               "Metric type of field index isn't the same with search info");
 
@@ -300,6 +301,11 @@ VectorMemIndex::Query(const DatasetPtr dataset,
     auto final = [&] {
         search_conf[knowhere::meta::TOPK] = topk;
         search_conf[knowhere::meta::METRIC_TYPE] = GetMetricType();
+
+        if (search_info.search_params_.contains("efs")) {
+            search_conf["efs"] = search_info.search_params_["efs"][std::to_string(segment_id)];
+        }
+
         auto index_type = GetIndexType();
         if (CheckKeyInConfig(search_conf, RADIUS)) {
             if (CheckKeyInConfig(search_conf, RANGE_FILTER)) {
