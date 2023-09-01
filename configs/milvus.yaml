@@ -251,7 +251,7 @@ queryNode:
     enabled: true
     memoryLimit: 2147483648 # 2 GB, 2 * 1024 *1024 *1024
   grouping:
-    enabled: true
+    enabled: false
     maxNQ: 1000
     topKMergeRatio: 20
   scheduler:

@@ -246,7 +246,7 @@ func (node *QueryNode) optimizeSearchParams(ctx context.Context, req *querypb.Se
 	if channelNum <= 0 {
 		channelNum = 1
 	}
-
+	
 	plan := planpb.PlanNode{}
 	err := proto.Unmarshal(serializedPlan, &plan)
 	if err != nil {
@@ -263,13 +263,13 @@ func (node *QueryNode) optimizeSearchParams(ctx context.Context, req *querypb.Se
 		}, 0)
 		// use shardNum * segments num in shard to estimate total segment number
 		estSegmentNum := sealedNum * int(channelNum)
-		withFilter := (plan.GetVectorAnns().GetPredicates() != nil)
+		// withFilter := (plan.GetVectorAnns().GetPredicates() != nil)
 		queryInfo := plan.GetVectorAnns().GetQueryInfo()
 		params := map[string]any{
-			common.TopKKey:        queryInfo.GetTopk(),
+			common.TopKKey:        req.GetReq().GetTopk(),
 			common.SearchParamKey: queryInfo.GetSearchParams(),
 			common.SegmentNumKey:  estSegmentNum,
-			common.WithFilterKey:  withFilter,
+			// common.WithFilterKey:  withFilter,
 			common.CollectionKey:  req.GetReq().GetCollectionID(),
 		}
 		err := node.queryHook.Run(params)
@@ -277,7 +277,7 @@ func (node *QueryNode) optimizeSearchParams(ctx context.Context, req *querypb.Se
 			log.Warn("failed to execute queryHook", zap.Error(err))
 			return nil, merr.WrapErrServiceUnavailable(err.Error(), "queryHook execution failed")
 		}
-		queryInfo.Topk = params[common.TopKKey].(int64)
+		// queryInfo.Topk = params[common.TopKKey].(int64)
 		queryInfo.SearchParams = params[common.SearchParamKey].(string)
 		serializedExprPlan, err := proto.Marshal(&plan)
 		if err != nil {

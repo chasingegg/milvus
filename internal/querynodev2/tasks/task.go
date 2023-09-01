@@ -119,7 +119,7 @@ func (t *SearchTask) Execute() error {
 
 	req := t.req
 	t.combinePlaceHolderGroups()
-	searchReq, err := segments.NewSearchRequest(t.collection, req, t.placeholderGroup)
+	searchReq, err := segments.NewSearchRequest(t.collection, req, t.topk, t.placeholderGroup)
 	if err != nil {
 		return err
 	}
@@ -253,7 +253,8 @@ func (t *SearchTask) Merge(other *SearchTask) bool {
 	ratio := float64(after) / float64(pre)
 
 	// Check mergeable
-	if t.req.GetReq().GetDbID() != other.req.GetReq().GetDbID() ||
+	if !paramtable.Get().QueryNodeCfg.GroupEnabled.GetAsBool() ||
+		t.req.GetReq().GetDbID() != other.req.GetReq().GetDbID() ||
 		t.req.GetReq().GetCollectionID() != other.req.GetReq().GetCollectionID() ||
 		t.req.GetReq().GetDslType() != other.req.GetReq().GetDslType() ||
 		t.req.GetDmlChannels()[0] != other.req.GetDmlChannels()[0] ||

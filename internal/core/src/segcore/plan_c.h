@@ -42,6 +42,9 @@ GetNumOfQueries(CPlaceholderGroup placeholder_group);
 int64_t
 GetTopK(CSearchPlan plan);
 
+void
+SetTopK(CSearchPlan plan, int64_t topk);
+
 CStatus
 GetFieldID(CSearchPlan plan, int64_t* field_id);
 

@@ -87,6 +87,12 @@ GetTopK(CSearchPlan plan) {
     return res;
 }
 
+void
+SetTopK(CSearchPlan plan, int64_t topk) {
+    auto search_plan = static_cast<milvus::query::Plan*>(plan);
+    search_plan->plan_node_->search_info_.topk_ = topk;
+}
+
 CStatus
 GetFieldID(CSearchPlan plan, int64_t* field_id) {
     try {
