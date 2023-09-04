@@ -44,6 +44,7 @@ type SearchTask struct {
 	placeholderGroup []byte
 	originTopks      []int64
 	originNqs        []int64
+	efs              []int64
 	others           []*SearchTask
 	notifier         chan error
 
@@ -67,6 +68,7 @@ func NewSearchTask(ctx context.Context,
 		placeholderGroup: req.GetReq().GetPlaceholderGroup(),
 		originTopks:      []int64{req.GetReq().GetTopk()},
 		originNqs:        []int64{req.GetReq().GetNq()},
+		efs:              []int64{req.GetEfs()[0]},
 		notifier:         make(chan error, 1),
 		tr:               timerecord.NewTimeRecorderWithTrace(ctx, "searchTask"),
 	}
@@ -119,7 +121,7 @@ func (t *SearchTask) Execute() error {
 
 	req := t.req
 	t.combinePlaceHolderGroups()
-	searchReq, err := segments.NewSearchRequest(t.collection, req, t.topk, t.placeholderGroup)
+	searchReq, err := segments.NewSearchRequest(t.collection, req, t.topk, t.efs, t.placeholderGroup)
 	if err != nil {
 		return err
 	}
@@ -275,6 +277,8 @@ func (t *SearchTask) Merge(other *SearchTask) bool {
 	t.others = append(t.others, other)
 	other.merged = true
 
+	// append efs
+	t.efs = append(t.efs, other.efs...)
 	return true
 }
 

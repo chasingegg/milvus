@@ -45,6 +45,9 @@ GetTopK(CSearchPlan plan);
 void
 SetTopK(CSearchPlan plan, int64_t topk);
 
+void
+SetEfs(CSearchPlan plan, const char* efs);
+
 CStatus
 GetFieldID(CSearchPlan plan, int64_t* field_id);
 

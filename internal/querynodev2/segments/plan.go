@@ -26,6 +26,7 @@ package segments
 import "C"
 
 import (
+	"encoding/json"
 	"fmt"
 	"unsafe"
 
@@ -41,7 +42,7 @@ type SearchPlan struct {
 	cSearchPlan C.CSearchPlan
 }
 
-func createSearchPlanByExpr(col *Collection, expr []byte, topk int64, metricType string) (*SearchPlan, error) {
+func createSearchPlanByExpr(col *Collection, expr []byte, topk int64, efs []int64, metricType string) (*SearchPlan, error) {
 	if col.collectionPtr == nil {
 		return nil, errors.New("nil collection ptr, collectionID = " + fmt.Sprintln(col.id))
 	}
@@ -60,6 +61,12 @@ func createSearchPlanByExpr(col *Collection, expr []byte, topk int64, metricType
 		newPlan.setMetricType(col.GetMetricType())
 	}
 	newPlan.setTopK(topk)
+
+	efss, err := json.Marshal(efs)
+	if err != nil {
+		return nil, err
+	}
+	newPlan.setEfs(string(efss))
 	return newPlan, nil
 }
 
@@ -71,6 +78,12 @@ func (plan *SearchPlan) getTopK() int64 {
 func (plan *SearchPlan) setTopK(topK int64) {
 	cTopK := C.int64_t(topK)
 	C.SetTopK(plan.cSearchPlan, cTopK)
+}
+
+func (plan *SearchPlan) setEfs(efs string) {
+	efss := C.CString(efs)
+	defer C.free(unsafe.Pointer(efss))
+	C.SetEfs(plan.cSearchPlan, efss)
 }
 
 func (plan *SearchPlan) setMetricType(metricType string) {
@@ -97,12 +110,12 @@ type SearchRequest struct {
 	searchFieldID     UniqueID
 }
 
-func NewSearchRequest(collection *Collection, req *querypb.SearchRequest, topk int64, placeholderGrp []byte) (*SearchRequest, error) {
+func NewSearchRequest(collection *Collection, req *querypb.SearchRequest, topk int64, efs []int64, placeholderGrp []byte) (*SearchRequest, error) {
 	var err error
 	var plan *SearchPlan
 	metricType := req.GetReq().GetMetricType()
 	expr := req.Req.SerializedExprPlan
-	plan, err = createSearchPlanByExpr(collection, expr, topk, metricType)
+	plan, err = createSearchPlanByExpr(collection, expr, topk, efs, metricType)
 	if err != nil {
 		return nil, err
 	}

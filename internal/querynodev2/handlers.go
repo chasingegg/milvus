@@ -18,6 +18,7 @@ package querynodev2
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -265,20 +266,28 @@ func (node *QueryNode) optimizeSearchParams(ctx context.Context, req *querypb.Se
 		estSegmentNum := sealedNum * int(channelNum)
 		// withFilter := (plan.GetVectorAnns().GetPredicates() != nil)
 		queryInfo := plan.GetVectorAnns().GetQueryInfo()
-		params := map[string]any{
+		_ = map[string]any{
 			common.TopKKey:        req.GetReq().GetTopk(),
 			common.SearchParamKey: queryInfo.GetSearchParams(),
 			common.SegmentNumKey:  estSegmentNum,
 			// common.WithFilterKey:  withFilter,
 			common.CollectionKey:  req.GetReq().GetCollectionID(),
 		}
-		err := node.queryHook.Run(params)
-		if err != nil {
-			log.Warn("failed to execute queryHook", zap.Error(err))
-			return nil, merr.WrapErrServiceUnavailable(err.Error(), "queryHook execution failed")
-		}
+		searchParamMap := make(map[string]interface{})
+		_ = json.Unmarshal([]byte(queryInfo.GetSearchParams()), &searchParamMap)
+		// make plan looks the same, move the ef param out for task merge
+		req.Efs = []int64{int64(searchParamMap["ef"].(float64))}
+		searchParamMap["ef"] = 1
+
+		// err := node.queryHook.Run(params)
+		// if err != nil {
+		// 	log.Warn("failed to execute queryHook", zap.Error(err))
+		// 	return nil, merr.WrapErrServiceUnavailable(err.Error(), "queryHook execution failed")
+		// }
 		// queryInfo.Topk = params[common.TopKKey].(int64)
-		queryInfo.SearchParams = params[common.SearchParamKey].(string)
+		// queryInfo.SearchParams = params[common.SearchParamKey].(string)
+		res, _ := json.Marshal(searchParamMap)
+		queryInfo.SearchParams = string(res)
 		serializedExprPlan, err := proto.Marshal(&plan)
 		if err != nil {
 			log.Warn("failed to marshal optimized plan", zap.Error(err))

@@ -93,6 +93,13 @@ SetTopK(CSearchPlan plan, int64_t topk) {
     search_plan->plan_node_->search_info_.topk_ = topk;
 }
 
+void
+SetEfs(CSearchPlan plan, const char* efs) {
+    auto search_plan = static_cast<milvus::query::Plan*>(plan);
+    search_plan->plan_node_->search_info_.search_params_["efs"] = milvus::json::parse(std::string(efs));
+}
+
+
 CStatus
 GetFieldID(CSearchPlan plan, int64_t* field_id) {
     try {
