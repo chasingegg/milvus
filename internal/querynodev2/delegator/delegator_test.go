@@ -296,6 +296,20 @@ func (s *DelegatorSuite) TestSearch() {
 
 		s.NoError(err)
 		s.Equal(3, len(results))
+
+
+		results, err = s.delegator.Search(ctx, &querypb.SearchRequest{
+			Req:         &internalpb.SearchRequest{
+				Base: commonpbutil.NewMsgBase(),
+				EnsureSearchQuality: true,
+				SealedSegmentIDsSearched: []int64{1000, 1001},
+				NumSegmentsPrefixSum: []int32{0, 1},
+				ChannelIDsSearched: []string{s.vchannelName},
+			},
+			DmlChannels: []string{s.vchannelName},
+		})
+		s.NoError(err)
+		s.Equal(2, len(results))
 	})
 
 	s.Run("partition_not_loaded", func() {
