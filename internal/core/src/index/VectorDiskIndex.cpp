@@ -22,6 +22,7 @@
 #include "config/ConfigKnowhere.h"
 #include "index/Meta.h"
 #include "index/Utils.h"
+#include "log/Log.h"
 #include "storage/LocalChunkManagerSingleton.h"
 #include "storage/Util.h"
 #include "common/Consts.h"
@@ -255,6 +256,39 @@ VectorDiskAnnIndex<T>::Build(const Config& config) {
 
     local_chunk_manager->RemoveDir(
         storage::GetSegmentRawDataPathPrefix(local_chunk_manager, segment_id));
+}
+
+template <typename T>
+void
+VectorDiskAnnIndex<T>::Partition(const Config& config) {
+    LOG_INFO("Partition start...");
+
+    auto local_chunk_manager =
+        storage::LocalChunkManagerSingleton::GetInstance().GetChunkManager();
+    knowhere::Json build_config;
+    build_config.update(config);
+    // LOG_INFO(build_config);
+
+    auto segment_id = file_manager_->GetFieldDataMeta().segment_id;
+    LOG_INFO("partition segment id: {}", segment_id);
+
+    auto insert_files =
+        GetValueFromConfig<std::vector<std::string>>(config, "insert_files");
+    AssertInfo(insert_files.has_value(),
+               "insert file paths is empty when build disk ann index");
+    auto local_data_path =
+        file_manager_->CacheRawDataToDisk(insert_files.value());
+    build_config[DISK_ANN_RAW_DATA_PATH] = local_data_path; 
+    LOG_INFO("partition data to local path: {}", local_data_path);
+    auto local_index_path_prefix = file_manager_->GetLocalIndexObjectPrefix();
+    build_config[DISK_ANN_PREFIX_PATH] = local_index_path_prefix;
+    LOG_INFO("partition index to local path: {}", local_index_path_prefix);
+    build_config[DISK_ANN_THREADS_NUM] = 1;
+    auto stat = index_.Build({}, build_config);
+    LOG_INFO("dir: {}", storage::GetSegmentRawDataPathPrefix(local_chunk_manager, segment_id));
+
+    // ...
+    LOG_INFO("Partition finished");
 }
 
 template <typename T>

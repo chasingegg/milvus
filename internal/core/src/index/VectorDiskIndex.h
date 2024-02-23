@@ -86,6 +86,9 @@ class VectorDiskAnnIndex : public VectorIndex {
     void
     BuildV2(const Config& config = {}) override;
 
+    void
+    Partition(const Config& config = {}) override;
+
     std::unique_ptr<SearchResult>
     Query(const DatasetPtr dataset,
           const SearchInfo& search_info,

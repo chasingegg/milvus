@@ -60,6 +60,9 @@ class IndexBase {
     virtual void
     BuildV2(const Config& Config = {}) = 0;
 
+    virtual void
+    Partition(const Config& config = {}) {}
+
     virtual int64_t
     Count() = 0;
 

@@ -16,6 +16,7 @@
 #include "indexbuilder/type_c.h"
 #include "log/Log.h"
 #include "storage/options.h"
+#include <iostream>
 
 #ifdef __linux__
 #include <malloc.h>
@@ -134,6 +135,17 @@ CreateIndex(CIndex* res_index, CBuildIndexInfo c_build_index_info) {
         auto index =
             milvus::indexbuilder::IndexFactory::GetInstance().CreateIndex(
                 build_index_info->field_type, config, fileManagerContext);
+        LOG_INFO("build index or kmeans...");
+        LOG_INFO(config[milvus::index::INDEX_ENGINE_VERSION]);
+        for (auto it = config.begin(); it != config.end(); ++it) {
+            std::cout << it.key() << " ";
+        }
+        std::cout << std::endl;
+        LOG_INFO("index type: {}", config["index_type"]);
+        for (auto insert_file : config["insert_files"]) {
+            LOG_INFO("insert files: {}", insert_file);
+        }
+        index->Kmeans();
         index->Build();
         *res_index = index.release();
         auto status = CStatus();
@@ -247,6 +259,12 @@ DeleteIndex(CIndex index) {
         status.error_code = UnexpectedError;
         status.error_msg = strdup(e.what());
     }
+    return status;
+}
+
+CStatus
+Kmeans(const float* vectors) {
+    auto status = CStatus();
     return status;
 }
 

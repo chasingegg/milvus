@@ -33,6 +33,9 @@ CStatus
 DeleteIndex(CIndex index);
 
 CStatus
+Kmeans(const float* vectors);
+
+CStatus
 BuildFloatVecIndex(CIndex index, int64_t float_value_num, const float* vectors);
 
 CStatus

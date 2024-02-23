@@ -70,6 +70,11 @@ VecIndexCreator::BuildV2() {
     index_->BuildV2(config_);
 }
 
+void
+VecIndexCreator::Kmeans() {
+    index_->Partition(config_);
+}
+
 milvus::BinarySet
 VecIndexCreator::Serialize() {
     return index_->Serialize(config_);

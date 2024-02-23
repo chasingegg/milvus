@@ -29,6 +29,9 @@ class IndexCreatorBase {
     virtual void
     BuildV2() = 0;
 
+    virtual void
+    Kmeans() {}
+
     virtual milvus::BinarySet
     Serialize() = 0;
 

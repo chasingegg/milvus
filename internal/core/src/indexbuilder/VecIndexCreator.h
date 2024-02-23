@@ -57,6 +57,9 @@ class VecIndexCreator : public IndexCreatorBase {
     int64_t
     dim();
 
+    void
+    Kmeans() override;
+
     std::unique_ptr<SearchResult>
     Query(const milvus::DatasetPtr& dataset,
           const SearchInfo& search_info,

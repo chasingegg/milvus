@@ -1,4 +1,4 @@
-package indexcgowrapper
+package compactioncgowrapper
 
 /*
 #cgo pkg-config: milvus_indexbuilder
@@ -10,7 +10,6 @@ import "C"
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"runtime"
 	"unsafe"
@@ -32,7 +31,6 @@ type IndexFileInfo struct {
 }
 
 type CodecIndex interface {
-	Build(*Dataset) error
 	Serialize() ([]*Blob, error)
 	GetIndexFileInfo() ([]*IndexFileInfo, error)
 	Load([]*Blob) error
@@ -121,132 +119,6 @@ func CreateIndexV2(ctx context.Context, buildIndexInfo *BuildIndexInfo) (CodecIn
 	}
 
 	return index, nil
-}
-
-func (index *CgoIndex) Build(dataset *Dataset) error {
-	switch dataset.DType {
-	case schemapb.DataType_None:
-		return fmt.Errorf("build index on supported data type: %s", dataset.DType.String())
-	case schemapb.DataType_FloatVector:
-		return index.buildFloatVecIndex(dataset)
-	case schemapb.DataType_Float16Vector:
-		return index.buildFloat16VecIndex(dataset)
-	case schemapb.DataType_BFloat16Vector:
-		return index.buildBFloat16VecIndex(dataset)
-	case schemapb.DataType_BinaryVector:
-		return index.buildBinaryVecIndex(dataset)
-	case schemapb.DataType_Bool:
-		return index.buildBoolIndex(dataset)
-	case schemapb.DataType_Int8:
-		return index.buildInt8Index(dataset)
-	case schemapb.DataType_Int16:
-		return index.buildInt16Index(dataset)
-	case schemapb.DataType_Int32:
-		return index.buildInt32Index(dataset)
-	case schemapb.DataType_Int64:
-		return index.buildInt64Index(dataset)
-	case schemapb.DataType_Float:
-		return index.buildFloatIndex(dataset)
-	case schemapb.DataType_Double:
-		return index.buildDoubleIndex(dataset)
-	case schemapb.DataType_String:
-		return index.buildStringIndex(dataset)
-	case schemapb.DataType_VarChar:
-		return index.buildStringIndex(dataset)
-	default:
-		return fmt.Errorf("build index on unsupported data type: %s", dataset.DType.String())
-	}
-}
-
-func (index *CgoIndex) buildFloatVecIndex(dataset *Dataset) error {
-	vectors := dataset.Data[keyRawArr].([]float32)
-	// status := C.BuildFloatVecIndex(index.indexPtr, (C.int64_t)(len(vectors)), (*C.float)(&vectors[0]))
-
-	status := C.Kmeans((*C.float)(&vectors[0]))
-	return HandleCStatus(&status, "failed to build float vector index")
-}
-
-func (index *CgoIndex) buildFloat16VecIndex(dataset *Dataset) error {
-	vectors := dataset.Data[keyRawArr].([]byte)
-	status := C.BuildFloat16VecIndex(index.indexPtr, (C.int64_t)(len(vectors)), (*C.uint8_t)(&vectors[0]))
-	return HandleCStatus(&status, "failed to build float16 vector index")
-}
-
-func (index *CgoIndex) buildBFloat16VecIndex(dataset *Dataset) error {
-	vectors := dataset.Data[keyRawArr].([]byte)
-	status := C.BuildBFloat16VecIndex(index.indexPtr, (C.int64_t)(len(vectors)), (*C.uint8_t)(&vectors[0]))
-	return HandleCStatus(&status, "failed to build bfloat16 vector index")
-}
-
-func (index *CgoIndex) buildBinaryVecIndex(dataset *Dataset) error {
-	vectors := dataset.Data[keyRawArr].([]byte)
-	status := C.BuildBinaryVecIndex(index.indexPtr, (C.int64_t)(len(vectors)), (*C.uint8_t)(&vectors[0]))
-	return HandleCStatus(&status, "failed to build binary vector index")
-}
-
-// TODO: investigate if we can pass an bool array to cgo.
-func (index *CgoIndex) buildBoolIndex(dataset *Dataset) error {
-	arr := dataset.Data[keyRawArr].([]bool)
-	f := &schemapb.BoolArray{
-		Data: arr,
-	}
-	data, err := proto.Marshal(f)
-	if err != nil {
-		return err
-	}
-	status := C.BuildScalarIndex(index.indexPtr, (C.int64_t)(len(data)), unsafe.Pointer(&data[0]))
-	return HandleCStatus(&status, "failed to build scalar index")
-}
-
-// TODO: refactor these duplicated code after generic programming is supported.
-
-func (index *CgoIndex) buildInt8Index(dataset *Dataset) error {
-	data := dataset.Data[keyRawArr].([]int8)
-	status := C.BuildScalarIndex(index.indexPtr, (C.int64_t)(len(data)), unsafe.Pointer(&data[0]))
-	return HandleCStatus(&status, "failed to build scalar index")
-}
-
-func (index *CgoIndex) buildInt16Index(dataset *Dataset) error {
-	data := dataset.Data[keyRawArr].([]int16)
-	status := C.BuildScalarIndex(index.indexPtr, (C.int64_t)(len(data)), unsafe.Pointer(&data[0]))
-	return HandleCStatus(&status, "failed to build scalar index")
-}
-
-func (index *CgoIndex) buildInt32Index(dataset *Dataset) error {
-	data := dataset.Data[keyRawArr].([]int32)
-	status := C.BuildScalarIndex(index.indexPtr, (C.int64_t)(len(data)), unsafe.Pointer(&data[0]))
-	return HandleCStatus(&status, "failed to build scalar index")
-}
-
-func (index *CgoIndex) buildInt64Index(dataset *Dataset) error {
-	data := dataset.Data[keyRawArr].([]int64)
-	status := C.BuildScalarIndex(index.indexPtr, (C.int64_t)(len(data)), unsafe.Pointer(&data[0]))
-	return HandleCStatus(&status, "failed to build scalar index")
-}
-
-func (index *CgoIndex) buildFloatIndex(dataset *Dataset) error {
-	data := dataset.Data[keyRawArr].([]float32)
-	status := C.BuildScalarIndex(index.indexPtr, (C.int64_t)(len(data)), unsafe.Pointer(&data[0]))
-	return HandleCStatus(&status, "failed to build scalar index")
-}
-
-func (index *CgoIndex) buildDoubleIndex(dataset *Dataset) error {
-	data := dataset.Data[keyRawArr].([]float64)
-	status := C.BuildScalarIndex(index.indexPtr, (C.int64_t)(len(data)), unsafe.Pointer(&data[0]))
-	return HandleCStatus(&status, "failed to build scalar index")
-}
-
-func (index *CgoIndex) buildStringIndex(dataset *Dataset) error {
-	arr := dataset.Data[keyRawArr].([]string)
-	f := &schemapb.StringArray{
-		Data: arr,
-	}
-	data, err := proto.Marshal(f)
-	if err != nil {
-		return err
-	}
-	status := C.BuildScalarIndex(index.indexPtr, (C.int64_t)(len(data)), unsafe.Pointer(&data[0]))
-	return HandleCStatus(&status, "failed to build scalar index")
 }
 
 func (index *CgoIndex) Serialize() ([]*Blob, error) {
