@@ -31,6 +31,9 @@ CStatus
 CreateIndex(CIndex* res_index, CBuildIndexInfo c_build_index_info);
 
 CStatus
+CreateMajorCompaction(CBuildIndexInfo c_build_index_info);
+
+CStatus
 DeleteIndex(CIndex index);
 
 CStatus

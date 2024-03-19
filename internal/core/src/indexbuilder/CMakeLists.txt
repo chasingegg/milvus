@@ -15,6 +15,7 @@ set(INDEXBUILDER_FILES
         index_c.cpp
         init_c.cpp
         ScalarIndexCreator.cpp
+        KmeansMajorCompaction.cpp
         )
 
 milvus_add_pkg_config("milvus_indexbuilder")

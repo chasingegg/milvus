@@ -149,6 +149,73 @@ CreateIndex(CIndex* res_index, CBuildIndexInfo c_build_index_info) {
 }
 
 CStatus
+CreateMajorCompaction(CBuildIndexInfo c_build_index_info) {
+    try {
+        auto build_index_info = (BuildIndexInfo*)c_build_index_info;
+        auto field_type = build_index_info->field_type;
+
+        milvus::index::CreateIndexInfo index_info;
+        index_info.field_type = build_index_info->field_type;
+
+        auto& config = build_index_info->config;
+        config["insert_files"] = build_index_info->insert_files;
+
+        // get index type
+        auto index_type = milvus::index::GetValueFromConfig<std::string>(
+            config, "index_type");
+        AssertInfo(index_type.has_value(), "index type is empty");
+        index_info.index_type = index_type.value();
+
+        auto engine_version = build_index_info->index_engine_version;
+
+        index_info.index_engine_version = engine_version;
+        config[milvus::index::INDEX_ENGINE_VERSION] =
+            std::to_string(engine_version);
+
+        // get metric type
+        if (milvus::datatype_is_vector(field_type)) {
+            auto metric_type = milvus::index::GetValueFromConfig<std::string>(
+                config, "metric_type");
+            AssertInfo(metric_type.has_value(), "metric type is empty");
+            index_info.metric_type = metric_type.value();
+        }
+
+        // init file manager
+        milvus::storage::FieldDataMeta field_meta{
+            build_index_info->collection_id,
+            build_index_info->partition_id,
+            build_index_info->segment_id,
+            build_index_info->field_id};
+
+        milvus::storage::IndexMeta index_meta{build_index_info->segment_id,
+                                              build_index_info->field_id,
+                                              build_index_info->index_build_id,
+                                              build_index_info->index_version};
+        auto chunk_manager = milvus::storage::CreateChunkManager(
+            build_index_info->storage_config);
+
+        milvus::storage::FileManagerContext fileManagerContext(
+            field_meta, index_meta, chunk_manager);
+
+        auto compactionJob =
+            milvus::indexbuilder::IndexFactory::GetInstance()
+                .CreateCompactionJob(
+                    build_index_info->field_type, config, fileManagerContext);
+        compactionJob->Train();
+        // *res_index = index.release();
+        auto status = CStatus();
+        status.error_code = Success;
+        status.error_msg = "";
+        return status;
+    } catch (std::exception& e) {
+        auto status = CStatus();
+        status.error_code = UnexpectedError;
+        status.error_msg = strdup(e.what());
+        return status;
+    }
+}
+
+CStatus
 CreateIndexV2(CIndex* res_index, CBuildIndexInfo c_build_index_info) {
     try {
         auto build_index_info = (BuildIndexInfo*)c_build_index_info;
