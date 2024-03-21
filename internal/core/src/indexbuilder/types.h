@@ -52,7 +52,8 @@ struct AnalyzeInfo {
     int64_t analyze_id;
     int64_t analyze_build_id;
     int64_t analyze_version;
-    std::map<int64_t, std::vector<std::string>> insert_files; // segment_id->files
+    std::map<int64_t, std::vector<std::string>>
+        insert_files;  // segment_id->files
     milvus::storage::StorageConfig storage_config;
     milvus::Config config;
     std::string field_name;
