@@ -166,6 +166,7 @@ func (fs *FileSource) update(configs map[string]string) error {
 	defer fs.updateMu.Unlock()
 
 	fs.Lock()
+	log.Info("there are something changed!")
 	events, err := PopulateEvents(fs.GetSourceName(), fs.configs, configs)
 	if err != nil {
 		fs.Unlock()

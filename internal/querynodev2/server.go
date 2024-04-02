@@ -551,6 +551,8 @@ func (node *QueryNode) initHook() error {
 
 func (node *QueryNode) handleQueryHookEvent() {
 	onEvent := func(event *config.Event) {
+		log.Info("config changed!")
+		log.Info(event.Value)
 		if node.queryHook != nil {
 			if err := node.queryHook.Init(event.Value); err != nil {
 				log.Error("failed to refresh hook config", zap.Error(err))
