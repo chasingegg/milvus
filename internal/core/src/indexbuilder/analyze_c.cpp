@@ -227,3 +227,36 @@ SerializeAnalyzeAndUpLoad(CAnalyze analyze, CBinarySet* c_binary_set) {
     }
     return status;
 }
+
+CStatus
+GetAnalyzeResult(CAnalyze analyze,
+                 char* centroid_path,
+                 int64_t* centroid_file_size,
+                 void* id_mapping_paths,
+                 int64_t* id_mapping_sizes) {
+    auto status = CStatus();
+    try {
+        AssertInfo(analyze,
+                   "failed to serialize analysis to binary set, passed index "
+                   "was null");
+        auto real_analyze =
+            reinterpret_cast<milvus::indexbuilder::MajorCompaction*>(analyze);
+        auto res = real_analyze->GetClusteringResultMeta();
+        centroid_path = res.centroid_path.data();
+        *centroid_file_size = res.centroid_file_size;
+
+        auto& map_ = res.id_mappings;
+        const char** id_mapping_paths_ = (const char**)id_mapping_paths;
+        size_t i = 0;
+        for (auto it = map_.begin(); it != map_.end(); ++it, i++) {
+            id_mapping_paths_[i] = it->first.data();
+            id_mapping_sizes[i] = it->second;
+        }
+        status.error_code = Success;
+        status.error_msg = "";
+    } catch (std::exception& e) {
+        status.error_code = UnexpectedError;
+        status.error_msg = strdup(e.what());
+    }
+    return status;
+}

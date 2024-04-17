@@ -39,6 +39,11 @@ class KmeansMajorCompaction : public MajorCompaction {
     BinarySet
     Upload() override;
 
+    ClusteringResultMeta
+    GetClusteringResultMeta() override {
+        return cluster_result_;
+    }
+
  private:
     std::unique_ptr<T[]>
     Sample(const std::vector<std::string>& file_paths,
@@ -48,7 +53,10 @@ class KmeansMajorCompaction : public MajorCompaction {
 
     std::shared_ptr<storage::DiskFileManagerImpl> file_manager_;
     Config config_;
+
     std::vector<std::string> result_files_;
+
+    ClusteringResultMeta cluster_result_;
 };
 
 template <typename T>

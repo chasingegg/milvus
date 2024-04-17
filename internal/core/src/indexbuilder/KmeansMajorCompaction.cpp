@@ -116,10 +116,15 @@ KmeansMajorCompaction<T>::Upload() {
     std::unordered_map<std::string, int64_t> remote_paths_to_size;
     file_manager_->AddCompactionResultFiles(result_files_,
                                             remote_paths_to_size);
+    const std::string ending = "centroids";
     for (auto& file : remote_paths_to_size) {
-        ret.Append(file.first, nullptr, file.second);
+        if (file.first.compare(file.first.size() - ending.size(), ending.size(), ending) != 0) {
+            cluster_result_.id_mappings[file.first] = file.second;
+        } else {
+            cluster_result_.centroid_path = file.first;
+            cluster_result_.centroid_file_size = file.second;
+        }
     }
-
     return ret;
 }
 

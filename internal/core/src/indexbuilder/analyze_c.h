@@ -58,6 +58,13 @@ AppendSegmentNumRows(CAnalyzeInfo c_analyze_info,
 CStatus
 SerializeAnalyzeAndUpLoad(CAnalyze analyze, CBinarySet* c_binary_set);
 
+CStatus
+GetAnalyzeResult(CAnalyze analyze,
+                 char* centroid_path,
+                 int64_t* centroid_file_size,
+                 void* id_mapping_paths,
+                 void* id_mapping_sizes);
+
 #ifdef __cplusplus
 };
 #endif

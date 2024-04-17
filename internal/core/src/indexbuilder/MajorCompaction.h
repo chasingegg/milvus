@@ -24,6 +24,12 @@
 
 namespace milvus::indexbuilder {
 
+struct ClusteringResultMeta {
+    std::string centroid_path;   // 
+    int64_t centroid_file_size;
+    std::unordered_map<std::string, int64_t> id_mappings;
+};
+
 class MajorCompaction {
  public:
     virtual ~MajorCompaction() = default;
@@ -33,6 +39,9 @@ class MajorCompaction {
 
     virtual BinarySet
     Upload() = 0;
+
+    virtual ClusteringResultMeta
+    GetClusteringResultMeta() = 0;
 };
 
 using MajorCompactionBasePtr = std::unique_ptr<MajorCompaction>;

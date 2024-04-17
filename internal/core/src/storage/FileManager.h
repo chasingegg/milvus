@@ -150,7 +150,7 @@ class FileManagerImpl : public knowhere::FileManager {
 
     virtual std::string
     GetRemoteCentroidsObjectPrefix() const {
-        return rcm_->GetRootPath() + "/files" + std::string(ANALYZE_ROOT_PATH) +
+        return rcm_->GetRootPath() + "/files/" + std::string(ANALYZE_ROOT_PATH) +
                "/" + std::to_string(index_meta_.build_id) + "/" +
                std::to_string(index_meta_.index_version) + "/" +
                std::to_string(field_meta_.collection_id) + "/" +
@@ -160,7 +160,7 @@ class FileManagerImpl : public knowhere::FileManager {
 
     virtual std::string
     GetRemoteCentroidIdMappingObjectPrefix(std::string segment_id) const {
-        return rcm_->GetRootPath() + "/files" + std::string(ANALYZE_ROOT_PATH) +
+        return rcm_->GetRootPath() + "/files/" + std::string(ANALYZE_ROOT_PATH) +
                "/" + std::to_string(index_meta_.build_id) + "/" +
                std::to_string(index_meta_.index_version) + "/" +
                std::to_string(field_meta_.collection_id) + "/" +
