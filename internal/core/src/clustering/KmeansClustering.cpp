@@ -22,6 +22,7 @@
 #include "index/Meta.h"
 #include "index/Utils.h"
 #include "knowhere/cluster/cluster_factory.h"
+#include "knowhere/comp/time_recorder.h"
 #include "clustering/KmeansClustering.h"
 #include "segcore/SegcoreConfig.h"
 #include "storage/LocalChunkManagerSingleton.h"
@@ -39,76 +40,97 @@ KmeansClustering::KmeansClustering(
     file_manager_ =
         std::make_unique<storage::MemFileManagerImpl>(file_manager_context);
     AssertInfo(file_manager_ != nullptr, "create file manager failed!");
+    int64_t collection_id = file_manager_context.fieldDataMeta.collection_id;
+    int64_t partition_id = file_manager_context.fieldDataMeta.partition_id;
+    msg_header_ = fmt::format("collection: {}, partition: {} ", collection_id, partition_id);
 }
 
 template <typename T>
-bool
-KmeansClustering::FetchSegmentData(uint8_t* buf,
-                                   const int64_t expected_train_size,
-                                   const std::vector<std::string>& files,
-                                   const int64_t num_rows,
-                                   const int64_t dim,
-                                   int64_t& offset) {
-    auto field_datas = file_manager_->CacheRawDataToMemory(files);
-    int64_t segment_size = 0;
-    for (auto& data : field_datas) {
-        segment_size += data->Size();
-    }
-    AssertInfo(segment_size == num_rows * sizeof(T) * dim,
-               "file size consistent, expected: {}, actual: {}",
-               num_rows * sizeof(T) * dim,
-               segment_size);
-    int64_t fetch_size = expected_train_size - offset;
-    bool whole_segment_used = fetch_size >= segment_size;
-    for (auto& data : field_datas) {
-        size_t size = 0;
-        if (whole_segment_used) {
-            size = data->Size();
-        } else {
-            size = std::min(expected_train_size - offset, data->Size());
+void
+KmeansClustering::FetchDataFiles(uint8_t* buf,
+                                 const int64_t expected_train_size,
+                                 const int64_t expected_remote_file_size,
+                                 const std::vector<std::string>& files,
+                                 const int64_t dim,
+                                 int64_t& offset) {
+    // CacheRawDataToMemory mostly used as pull files from one segment
+    // So we could assume memory is always enough for theses cases
+    // But in clustering when we sample train data, first pre-allocate the large buffer(size controlled by config) for future knowhere usage
+    // And we will have tmp memory usage at pulling stage, pull file(tmp memory) + memcpy to pre-allocated buffer, limit the batch here
+    auto batch = size_t(DEFAULT_FIELD_MAX_MEMORY_LIMIT / FILE_SLICE_SIZE);
+    int64_t fetched_file_size = 0;
+
+    for (size_t i = 0; i < files.size(); i += batch) {
+        size_t start = i;
+        size_t end = std::min(files.size(), i + batch);
+        std::vector<std::string> group_files(files.begin() + start,
+                                             files.begin() + end);
+        auto field_datas = file_manager_->CacheRawDataToMemory(group_files);
+
+        for (auto& data : field_datas) {
+            size_t size = std::min(expected_train_size - offset, data->Size());
             if (size <= 0) {
                 break;
             }
+            fetched_file_size += size;
+            std::memcpy(buf + offset, data->Data(), size);
+            offset += size;
+            data.reset();
         }
-        std::memcpy(buf + offset, data->Data(), size);
-        offset += size;
-        data.reset();
     }
-
-    return whole_segment_used;
+    AssertInfo(fetched_file_size == expected_remote_file_size,
+               "file size inconsistent, expected: {}, actual: {}",
+               expected_remote_file_size,
+               fetched_file_size);
 }
 
 template <typename T>
-int64_t
+void
 KmeansClustering::SampleTrainData(
     const std::vector<int64_t>& segment_ids,
     const std::map<int64_t, std::vector<std::string>>& segment_file_paths,
     const std::map<int64_t, int64_t>& segment_num_rows,
     const int64_t expected_train_size,
     const int64_t dim,
+    const bool random_sample,
     uint8_t* buf) {
-    int64_t trained_segments_num = 0;
     int64_t offset = 0;
-    // segment_ids already shuffled, so just pick data by sequence
+    std::vector<std::string> files;
+
+    if (random_sample) {
+        for (auto& [segment_id, segment_files] : segment_file_paths) {
+            for (auto& segment_file : segment_files) {
+                files.emplace_back(segment_file);
+            }
+        }
+        // shuffle files
+        std::shuffle(files.begin(), files.end(), std::mt19937());
+        FetchDataFiles<T>(
+            buf, expected_train_size, expected_train_size, files, dim, offset);
+        return;
+    }
+
+    // pick all segment_ids, no shuffle
+    // and pull data once each segment to reuse the id mapping for assign stage
     for (auto i = 0; i < segment_ids.size(); i++) {
         if (offset == expected_train_size) {
             break;
         }
         int64_t cur_segment_id = segment_ids[i];
-        bool whole_segment_used =
-            FetchSegmentData<T>(buf,
-                                expected_train_size,
-                                segment_file_paths.at(cur_segment_id),
-                                segment_num_rows.at(cur_segment_id),
-                                dim,
-                                offset);
-        // if whole segment is used for training, we could directly get its vector -> centroid id mapping after kmeans training
-        // so we record the num of segments to avoid recomputing id mapping results
-        if (whole_segment_used) {
-            trained_segments_num++;
-        }
+        files = segment_file_paths.at(cur_segment_id);
+        std::sort(files.begin(),
+                  files.end(),
+                  [](const std::string& a, const std::string& b) {
+                      return std::stol(a.substr(a.find_last_of("/") + 1)) <
+                             std::stol(b.substr(b.find_last_of("/") + 1));
+                  });
+        FetchDataFiles<T>(buf,
+                          expected_train_size,
+                          segment_num_rows.at(cur_segment_id) * dim * sizeof(T),
+                          files,
+                          dim,
+                          offset);
     }
-    return trained_segments_num;
 }
 
 template <typename T>
@@ -166,6 +188,11 @@ KmeansClustering::CentroidIdMappingToPB(
     return stats_arr;
 }
 
+bool
+KmeansClustering::IsDataSkew(const std::vector<int>& num_in_each_centroid) {
+    return true;
+}
+
 template <typename T>
 void
 KmeansClustering::StreamingAssignandUpload(
@@ -178,13 +205,13 @@ KmeansClustering::StreamingAssignandUpload(
     const std::map<int64_t, int64_t>& num_rows,
     const int64_t dim,
     const int64_t trained_segments_num,
-    const int64_t num_cluster) {
-    LOG_INFO("start upload");
+    const int64_t num_clusters) {
+
     auto byte_size = centroid_stats.ByteSizeLong();
     std::unique_ptr<uint8_t[]> data = std::make_unique<uint8_t[]>(byte_size);
     centroid_stats.SerializeToArray(data.get(), byte_size);
     std::unordered_map<std::string, int64_t> remote_paths_to_size;
-    LOG_INFO("start upload cluster centroids file");
+    LOG_INFO(msg_header_ + "start upload cluster centroids file");
     AddClusteringResultFiles(
         file_manager_->GetChunkManager().get(),
         data.get(),
@@ -196,7 +223,7 @@ KmeansClustering::StreamingAssignandUpload(
     cluster_result_.centroid_file_size =
         remote_paths_to_size.at(cluster_result_.centroid_path);
     remote_paths_to_size.clear();
-    LOG_INFO("upload cluster centroids file done");
+    LOG_INFO(msg_header_ + "upload cluster centroids file done");
 
     auto serializeIdMappingAndUpload =
         [&](const int64_t segment_id,
@@ -214,12 +241,13 @@ KmeansClustering::StreamingAssignandUpload(
                     std::string(OFFSET_MAPPING_NAME),
                 remote_paths_to_size);
             LOG_INFO(
-                "upload segment {} cluster id mapping file with size {} B done",
+                msg_header_ + "upload segment {} cluster id mapping file with size {} B done",
                 segment_id,
                 byte_size);
         };
 
-    LOG_INFO("start upload cluster id mapping file");
+    LOG_INFO(msg_header_ + "start upload cluster id mapping file");
+    std::vector<int64_t> num_vectors_each_centroid(num_clusters, 0);
     for (size_t i = 0; i < segment_ids.size(); i++) {
         int64_t segment_id = segment_ids[i];
         // id mapping has been computed, just upload to remote
@@ -229,12 +257,12 @@ KmeansClustering::StreamingAssignandUpload(
             int64_t num_row = num_rows.at(segment_id);
             std::unique_ptr<T[]> buf = std::make_unique<T[]>(num_row * dim);
             int64_t offset = 0;
-            FetchSegmentData<T>(reinterpret_cast<uint8_t*>(buf.get()),
-                                INT64_MAX,
-                                insert_files.at(segment_id),
-                                dim,
-                                num_row,
-                                offset);
+            FetchDataFiles<T>(reinterpret_cast<uint8_t*>(buf.get()),
+                              INT64_MAX,
+                              num_row * dim * sizeof(T),
+                              insert_files.at(segment_id),
+                              dim,
+                              offset);
             auto dataset = GenDataset(num_row, dim, buf.release());
             dataset->SetIsOwner(true);
             auto res = cluster_node.Assign(*dataset);
@@ -249,11 +277,11 @@ KmeansClustering::StreamingAssignandUpload(
                 reinterpret_cast<const uint32_t*>(res.value()->GetTensor());
 
             auto id_mapping_pb = CentroidIdMappingToPB(
-                id_mapping, {segment_id}, 1, num_rows, num_cluster)[0];
+                id_mapping, {segment_id}, 1, num_rows, num_clusters)[0];
             serializeIdMappingAndUpload(segment_id, id_mapping_pb);
         }
     }
-    LOG_INFO("upload cluster id mapping file done");
+    LOG_INFO(msg_header_ + "upload cluster id mapping file done");
     cluster_result_.id_mappings = std::move(remote_paths_to_size);
     is_runned_ = true;
 }
@@ -318,39 +346,39 @@ KmeansClustering::Run(const Config& config) {
             "segment id {} not exist in insert files",
             segment_id);
     }
-    // random shuffle for sampling
-    std::shuffle(segment_ids.begin(), segment_ids.end(), std::mt19937());
+    size_t trained_segments_num = 0;
 
     size_t data_size = data_num * dim * sizeof(T);
-    std::vector<std::string> data_files;
-    std::vector<uint64_t> offsets;
-
     size_t train_num = train_size.value() / sizeof(T) / dim;
-
+    bool random_sample = true;
     // make train num equal to data num
     if (train_num >= data_num) {
         train_num = data_num;
+        random_sample =
+            false;  // all data are used for training, no need to random sampling
+        trained_segments_num = segment_ids.size();
     }
     size_t train_size_final = train_num * dim * sizeof(T);
-
+    knowhere::TimeRecorder rc(msg_header_ + "kmeans clustering", 2 /* log level: info */); 
     // if data_num larger than max_train_size, we need to sample to make train data fits in memory
     // otherwise just load all the data for kmeans training
-    LOG_INFO("pull and sample {}GB data out of {}GB data",
+    LOG_INFO(msg_header_ + "pull and sample {}GB data out of {}GB data",
              train_size_final / 1024.0 / 1024.0 / 1024.0,
              data_size / 1024.0 / 1024.0 / 1024.0);
     auto buf = std::make_unique<uint8_t[]>(train_size_final);
-    int64_t trained_segments_num = SampleTrainData<T>(segment_ids,
-                                                      insert_files.value(),
-                                                      num_rows.value(),
-                                                      train_size_final,
-                                                      dim,
-                                                      buf.get());
-    LOG_INFO("sample done");
+    SampleTrainData<T>(segment_ids,
+                       insert_files.value(),
+                       num_rows.value(),
+                       train_size_final,
+                       dim,
+                       random_sample,
+                       buf.get());
+    rc.RecordSection("sample done");
 
     auto dataset = GenDataset(train_num, dim, buf.release());
     dataset->SetIsOwner(true);
 
-    LOG_INFO("train data num: {}, dim: {}, num_clusters: {}",
+    LOG_INFO(msg_header_ + "train data num: {}, dim: {}, num_clusters: {}",
              train_num,
              dim,
              num_clusters.value());
@@ -366,7 +394,7 @@ KmeansClustering::Run(const Config& config) {
                               res.what()));
     }
     res.value()->SetIsOwner(true);
-    LOG_INFO("kmeans clustering done");
+    rc.RecordSection(msg_header_ + "clustering train done");
     dataset.reset();  // release train data
 
     auto centroid_id_mapping =
@@ -401,6 +429,8 @@ KmeansClustering::Run(const Config& config) {
                                 dim,
                                 trained_segments_num,
                                 num_clusters.value());
+    rc.RecordSection(msg_header_ + "clustering result upload done");
+    rc.ElapseFromBegin(msg_header_ + "clustering done");
 }
 
 template void
@@ -416,20 +446,21 @@ KmeansClustering::StreamingAssignandUpload<float>(
     const int64_t trained_segments_num,
     const int64_t num_clusters);
 
-template bool
-KmeansClustering::FetchSegmentData<float>(uint8_t* buf,
-                                          const int64_t expected_train_size,
-                                          const std::vector<std::string>& files,
-                                          const int64_t num_rows,
-                                          const int64_t dim,
-                                          int64_t& offset);
-template int64_t
+template void
+KmeansClustering::FetchDataFiles<float>(uint8_t* buf,
+                                        const int64_t expected_train_size,
+                                        const int64_t expected_remote_file_size,
+                                        const std::vector<std::string>& files,
+                                        const int64_t dim,
+                                        int64_t& offset);
+template void
 KmeansClustering::SampleTrainData<float>(
     const std::vector<int64_t>& segment_ids,
     const std::map<int64_t, std::vector<std::string>>& segment_file_paths,
     const std::map<int64_t, int64_t>& segment_num_rows,
     const int64_t expected_train_size,
     const int64_t dim,
+    const bool random_sample,
     uint8_t* buf);
 
 template void

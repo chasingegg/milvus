@@ -39,4 +39,31 @@ AddClusteringResultFiles(milvus::storage::ChunkManager* remote_chunk_manager,
         remote_prefix, const_cast<uint8_t*>(data), data_size);
     map[remote_prefix] = data_size;
 }
+
+void
+RemoveClusteringResultFiles(milvus::storage::ChunkManager* remote_chunk_manager,
+                            const std::vector<std::string>& remote_files) {
+    auto& pool = ThreadPools::GetThreadPool(milvus::ThreadPoolPriority::MIDDLE);
+    std::vector<std::future<void>> futures;
+
+    for (int64_t i = 0; i < remote_files.size(); ++i) {
+        futures.push_back(pool.Submit([&]() {
+            remote_chunk_manager->Remove(remote_files[i]);
+        }));
+    }
+    std::exception_ptr first_exception = nullptr;
+    for (auto& future : futures) {
+        try {
+            future.get();
+        } catch (...) {
+            if (!first_exception) {
+                first_exception = std::current_exception();
+            }
+        }
+    }
+    if (first_exception) {
+        std::rethrow_exception(first_exception);
+    }
+}
+
 }  // namespace milvus::clustering

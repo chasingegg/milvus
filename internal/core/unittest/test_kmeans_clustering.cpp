@@ -57,6 +57,7 @@ CheckResultCorrectness(
     int64_t segment_id2,
     int64_t dim,
     int64_t nb,
+    int expected_num_clusters,
     bool check_centroids) {
     std::string centroids_path_prefix =
         clusteringJob->GetRemoteCentroidsObjectPrefix();
@@ -71,8 +72,7 @@ CheckResultCorrectness(
             centroids.emplace_back(T(value));
         }
     }
-    int expected_num_clusters = 8;
-    ASSERT_EQ(centroids.size(), 8 * dim);
+    ASSERT_EQ(centroids.size(), expected_num_clusters * dim);
     std::string offset_mapping_name = std::string(OFFSET_MAPPING_NAME);
     std::string centroid_id_mapping_path =
         clusteringJob->GetRemoteCentroidIdMappingObjectPrefix(segment_id) +
@@ -169,7 +169,7 @@ test_run() {
     {
         Config config;
         config["insert_files"] = remote_files;
-        config["num_clusters"] = 80;
+        config["num_clusters"] = 8;
         config["train_size"] = 25L * 1024 * 1024 * 1024;  // 25GB
         config["dim"] = dim;
         config["num_rows"] = num_rows;
@@ -177,7 +177,7 @@ test_run() {
             std::make_unique<clustering::KmeansClustering>(ctx);
         clusteringJob->Run<T>(config);
         CheckResultCorrectness<T>(
-            clusteringJob, segment_id, segment_id2, dim, nb, true);
+            clusteringJob, segment_id, segment_id2, dim, nb, config["num_clusters"], true);
     }
     // need to sample train data case1
     {
@@ -192,13 +192,13 @@ test_run() {
 
         clusteringJob->Run<T>(config);
         CheckResultCorrectness<T>(
-            clusteringJob, segment_id, segment_id2, dim, nb, true);
+            clusteringJob, segment_id, segment_id2, dim, nb, config["num_clusters"], true);
     }
     // need to sample train data case2
     {
         Config config;
         config["insert_files"] = remote_files;
-        config["num_clusters"] = 8;               // 1MB
+        config["num_clusters"] = 8;
         config["train_size"] = 6L * 1024 * 1024;  // 6MB
         config["dim"] = dim;
         config["num_rows"] = num_rows;
@@ -207,7 +207,7 @@ test_run() {
 
         clusteringJob->Run<T>(config);
         CheckResultCorrectness<T>(
-            clusteringJob, segment_id, segment_id2, dim, nb, false);
+            clusteringJob, segment_id, segment_id2, dim, nb, config["num_clusters"], false);
     }
 }
 

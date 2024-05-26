@@ -102,25 +102,28 @@ class KmeansClustering {
         const int64_t trained_segments_num,
         const int64_t num_clusters);
 
-    // bool to indicate if the whole segment data are fetched
-    template <typename T>
     bool
-    FetchSegmentData(uint8_t* buf,
-                     const int64_t expected_train_size,
-                     const std::vector<std::string>& files,
-                     const int64_t num_rows,
-                     const int64_t dim,
-                     int64_t& offset);
+    IsDataSkew(const std::vector<int>& num_in_each_centroid);
+
+    template <typename T>
+    void
+    FetchDataFiles(uint8_t* buf,
+                   const int64_t expected_train_size,
+                   const int64_t expected_remote_file_size,
+                   const std::vector<std::string>& files,
+                   const int64_t dim,
+                   int64_t& offset);
 
     // given all possible segments, sample data to buffer
     template <typename T>
-    int64_t
+    void
     SampleTrainData(
         const std::vector<int64_t>& segment_ids,
         const std::map<int64_t, std::vector<std::string>>& segment_file_paths,
         const std::map<int64_t, int64_t>& segment_num_rows,
         const int64_t expected_train_size,
         const int64_t dim,
+        const bool random_sample,
         uint8_t* buf);
 
     // transform centroids result to PB format for future usage of golang side
@@ -141,6 +144,7 @@ class KmeansClustering {
     std::unique_ptr<storage::MemFileManagerImpl> file_manager_;
     ClusteringResultMeta cluster_result_;
     bool is_runned_ = false;
+    std::string msg_header_;
 };
 
 using KmeansClusteringPtr = std::unique_ptr<KmeansClustering>;
