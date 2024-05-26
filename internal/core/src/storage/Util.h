@@ -32,6 +32,7 @@
 #include "storage/DataCodec.h"
 #include "storage/Types.h"
 #include "storage/space.h"
+#include "pb/index_cgo_msg.pb.h"
 
 namespace milvus::storage {
 
@@ -167,5 +168,8 @@ CollectFieldDataChannel(FieldDataChannelPtr& channel);
 
 FieldDataPtr
 MergeFieldData(std::vector<FieldDataPtr>& data_array);
+
+StorageConfig
+GetStorageConfig(const milvus::proto::indexcgo::StorageConfig& config);
 
 }  // namespace milvus::storage

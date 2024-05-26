@@ -17,6 +17,7 @@
 #include <unordered_set>
 
 #include "common/Tracer.h"
+#include "common/EasyAssert.h"
 #include "index/InvertedIndexTantivy.h"
 #include "storage/Util.h"
 #include "storage/InsertData.h"
@@ -57,12 +58,13 @@ CheckResultCorrectness(
     int64_t segment_id2,
     int64_t dim,
     int64_t nb,
+    int expected_num_clusters,
     bool check_centroids) {
     std::string centroids_path_prefix =
         clusteringJob->GetRemoteCentroidsObjectPrefix();
     std::string centroids_name = std::string(CENTROIDS_NAME);
     std::string centroid_path = centroids_path_prefix + "/" + centroids_name;
-    milvus::proto::segcore::ClusteringCentroidsStats stats;
+    milvus::proto::clustering::ClusteringCentroidsStats stats;
     ReadPBFile(centroid_path, stats);
     std::vector<T> centroids;
     for (const auto& centroid : stats.centroids()) {
@@ -71,17 +73,16 @@ CheckResultCorrectness(
             centroids.emplace_back(T(value));
         }
     }
-    int expected_num_clusters = 8;
-    ASSERT_EQ(centroids.size(), 8 * dim);
+    ASSERT_EQ(centroids.size(), expected_num_clusters * dim);
     std::string offset_mapping_name = std::string(OFFSET_MAPPING_NAME);
     std::string centroid_id_mapping_path =
         clusteringJob->GetRemoteCentroidIdMappingObjectPrefix(segment_id) +
         "/" + offset_mapping_name;
-    milvus::proto::segcore::ClusteringCentroidIdMappingStats mapping_stats;
+    milvus::proto::clustering::ClusteringCentroidIdMappingStats mapping_stats;
     std::string centroid_id_mapping_path2 =
         clusteringJob->GetRemoteCentroidIdMappingObjectPrefix(segment_id2) +
         "/" + offset_mapping_name;
-    milvus::proto::segcore::ClusteringCentroidIdMappingStats mapping_stats2;
+    milvus::proto::clustering::ClusteringCentroidIdMappingStats mapping_stats2;
     ReadPBFile(centroid_id_mapping_path, mapping_stats);
     ReadPBFile(centroid_id_mapping_path2, mapping_stats2);
 
@@ -164,24 +165,71 @@ test_run() {
     remote_files[segment_id2] = {log_path};
     num_rows[segment_id] = nb;
     num_rows[segment_id2] = nb;
+    Config config;
+    config["max_cluster_ratio"] = 10.0;
+    config["max_cluster_size"] = 5L * 1024 * 1024 * 1024;
 
     // no need to sample train data
     {
-        Config config;
+        config["min_cluster_ratio"] = 0.01;
         config["insert_files"] = remote_files;
-        config["num_clusters"] = 80;
+        config["num_clusters"] = 8;
         config["train_size"] = 25L * 1024 * 1024 * 1024;  // 25GB
         config["dim"] = dim;
         config["num_rows"] = num_rows;
         auto clusteringJob =
             std::make_unique<clustering::KmeansClustering>(ctx);
         clusteringJob->Run<T>(config);
-        CheckResultCorrectness<T>(
-            clusteringJob, segment_id, segment_id2, dim, nb, true);
+        CheckResultCorrectness<T>(clusteringJob,
+                                  segment_id,
+                                  segment_id2,
+                                  dim,
+                                  nb,
+                                  config["num_clusters"],
+                                  true);
     }
+    {
+        config["min_cluster_ratio"] = 0.01;
+        config["insert_files"] = remote_files;
+        config["num_clusters"] = 200;
+        config["train_size"] = 25L * 1024 * 1024 * 1024;  // 25GB
+        config["dim"] = dim;
+        config["num_rows"] = num_rows;
+        auto clusteringJob =
+            std::make_unique<clustering::KmeansClustering>(ctx);
+        clusteringJob->Run<T>(config);
+        CheckResultCorrectness<T>(clusteringJob,
+                                  segment_id,
+                                  segment_id2,
+                                  dim,
+                                  nb,
+                                  config["num_clusters"],
+                                  true);
+    }
+
+    // data skew
+    {
+        EXPECT_THROW(
+            try {
+                config["min_cluster_ratio"] = 0.98;
+                config["insert_files"] = remote_files;
+                config["num_clusters"] = 8;
+                config["train_size"] = 25L * 1024 * 1024 * 1024;  // 25GB
+                config["dim"] = dim;
+                config["num_rows"] = num_rows;
+                auto clusteringJob =
+                    std::make_unique<clustering::KmeansClustering>(ctx);
+                clusteringJob->Run<T>(config);
+            } catch (SegcoreError& e) {
+                ASSERT_EQ(e.get_error_code(), ErrorCode::ClusterSkip);
+                throw e;
+            },
+            SegcoreError);
+    }
+
     // need to sample train data case1
     {
-        Config config;
+        config["min_cluster_ratio"] = 0.01;
         config["insert_files"] = remote_files;
         config["num_clusters"] = 8;
         config["train_size"] = 1536L * 1024;  // 1.5MB
@@ -191,14 +239,19 @@ test_run() {
             std::make_unique<clustering::KmeansClustering>(ctx);
 
         clusteringJob->Run<T>(config);
-        CheckResultCorrectness<T>(
-            clusteringJob, segment_id, segment_id2, dim, nb, true);
+        CheckResultCorrectness<T>(clusteringJob,
+                                  segment_id,
+                                  segment_id2,
+                                  dim,
+                                  nb,
+                                  config["num_clusters"],
+                                  true);
     }
     // need to sample train data case2
     {
-        Config config;
+        config["min_cluster_ratio"] = 0.01;
         config["insert_files"] = remote_files;
-        config["num_clusters"] = 8;               // 1MB
+        config["num_clusters"] = 8;
         config["train_size"] = 6L * 1024 * 1024;  // 6MB
         config["dim"] = dim;
         config["num_rows"] = num_rows;
@@ -206,8 +259,13 @@ test_run() {
             std::make_unique<clustering::KmeansClustering>(ctx);
 
         clusteringJob->Run<T>(config);
-        CheckResultCorrectness<T>(
-            clusteringJob, segment_id, segment_id2, dim, nb, false);
+        CheckResultCorrectness<T>(clusteringJob,
+                                  segment_id,
+                                  segment_id2,
+                                  dim,
+                                  nb,
+                                  config["num_clusters"],
+                                  true);
     }
 }
 

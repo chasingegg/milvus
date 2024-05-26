@@ -865,4 +865,25 @@ MergeFieldData(std::vector<FieldDataPtr>& data_array) {
     return merged_data;
 }
 
+StorageConfig
+GetStorageConfig(const milvus::proto::indexcgo::StorageConfig& config) {
+    auto storage_config = StorageConfig();
+    storage_config.address = std::string(config.address());
+    storage_config.bucket_name = std::string(config.bucket_name());
+    storage_config.access_key_id = std::string(config.access_keyid());
+    storage_config.access_key_value = std::string(config.secret_access_key());
+    storage_config.root_path = std::string(config.root_path());
+    storage_config.storage_type = std::string(config.storage_type());
+    storage_config.cloud_provider = std::string(config.cloud_provider());
+    storage_config.iam_endpoint = std::string(config.iamendpoint());
+    storage_config.cloud_provider = std::string(config.cloud_provider());
+    storage_config.useSSL = config.usessl();
+    storage_config.sslCACert = config.sslcacert();
+    storage_config.useIAM = config.useiam();
+    storage_config.region = config.region();
+    storage_config.useVirtualHost = config.use_virtual_host();
+    storage_config.requestTimeoutMs = config.request_timeout_ms();
+    return storage_config;
+}
+
 }  // namespace milvus::storage

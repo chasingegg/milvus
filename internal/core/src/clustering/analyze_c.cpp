@@ -22,52 +22,51 @@
 #include "index/Utils.h"
 #include "index/Meta.h"
 #include "storage/Util.h"
+#include "pb/clustering.pb.h"
+#include "pb/index_cgo_msg.pb.h"
 #include "clustering/KmeansClustering.h"
 
 using namespace milvus;
 CStatus
-Analyze(CAnalyze* res_analyze, CAnalyzeInfo c_analyze_info) {
+Analyze(CAnalyze* res_analyze,
+        const uint8_t* serialized_analyze_info,
+        const uint64_t len) {
     try {
-        auto analyze_info = (AnalyzeInfo*)c_analyze_info;
-        auto field_type = analyze_info->field_type;
-
-        milvus::index::CreateIndexInfo index_info;
-        index_info.field_type = analyze_info->field_type;
-
-        auto& config = analyze_info->config;
-        config["insert_files"] = analyze_info->insert_files;
-        config["num_clusters"] = analyze_info->num_clusters;
-        config["train_size"] = analyze_info->train_size;
-        config["num_rows"] = analyze_info->num_rows;
-        config["dim"] = analyze_info->dim;
+        auto analyze_info =
+            std::make_unique<milvus::proto::clustering::AnalyzeInfo>();
+        auto res = analyze_info->ParseFromArray(serialized_analyze_info, len);
+        AssertInfo(res, "Unmarshall analyze info failed");
+        auto field_type =
+            static_cast<DataType>(analyze_info->field_schema().data_type());
+        auto field_id = analyze_info->field_schema().fieldid();
 
         // init file manager
-        milvus::storage::FieldDataMeta field_meta{analyze_info->collection_id,
-                                                  analyze_info->partition_id,
+        milvus::storage::FieldDataMeta field_meta{analyze_info->collectionid(),
+                                                  analyze_info->partitionid(),
                                                   0,
-                                                  analyze_info->field_id};
+                                                  field_id};
 
-        milvus::storage::IndexMeta index_meta{0,
-                                              analyze_info->field_id,
-                                              analyze_info->task_id,
-                                              analyze_info->version};
+        milvus::storage::IndexMeta index_meta{
+            0, field_id, analyze_info->buildid(), analyze_info->version()};
+        auto storage_config =
+            milvus::storage::GetStorageConfig(analyze_info->storage_config());
         auto chunk_manager =
-            milvus::storage::CreateChunkManager(analyze_info->storage_config);
+            milvus::storage::CreateChunkManager(storage_config);
 
         milvus::storage::FileManagerContext fileManagerContext(
             field_meta, index_meta, chunk_manager);
 
-        if (analyze_info->field_type != DataType::VECTOR_FLOAT) {
+        if (field_type != DataType::VECTOR_FLOAT) {
             throw SegcoreError(
                 DataTypeInvalid,
                 fmt::format("invalid data type for clustering is {}",
-                            std::to_string(int(analyze_info->field_type))));
+                            std::to_string(int(field_type))));
         }
         auto clusteringJob =
             std::make_unique<milvus::clustering::KmeansClustering>(
                 fileManagerContext);
 
-        clusteringJob->Run<float>(config);
+        clusteringJob->Run<float>(*analyze_info);
         *res_analyze = clusteringJob.release();
         auto status = CStatus();
         status.error_code = Success;

@@ -84,27 +84,6 @@ CreateIndexV0(enum CDataType dtype,
     return status;
 }
 
-milvus::storage::StorageConfig
-get_storage_config(const milvus::proto::indexcgo::StorageConfig& config) {
-    auto storage_config = milvus::storage::StorageConfig();
-    storage_config.address = std::string(config.address());
-    storage_config.bucket_name = std::string(config.bucket_name());
-    storage_config.access_key_id = std::string(config.access_keyid());
-    storage_config.access_key_value = std::string(config.secret_access_key());
-    storage_config.root_path = std::string(config.root_path());
-    storage_config.storage_type = std::string(config.storage_type());
-    storage_config.cloud_provider = std::string(config.cloud_provider());
-    storage_config.iam_endpoint = std::string(config.iamendpoint());
-    storage_config.cloud_provider = std::string(config.cloud_provider());
-    storage_config.useSSL = config.usessl();
-    storage_config.sslCACert = config.sslcacert();
-    storage_config.useIAM = config.useiam();
-    storage_config.region = config.region();
-    storage_config.useVirtualHost = config.use_virtual_host();
-    storage_config.requestTimeoutMs = config.request_timeout_ms();
-    return storage_config;
-}
-
 milvus::OptFieldT
 get_opt_field(const ::google::protobuf::RepeatedPtrField<
               milvus::proto::indexcgo::OptionalFieldInfo>& field_infos) {
@@ -163,8 +142,8 @@ CreateIndex(CIndex* res_index,
         milvus::index::CreateIndexInfo index_info;
         index_info.field_type = field_type;
 
-        auto storage_config =
-            get_storage_config(build_index_info->storage_config());
+        auto storage_config = milvus::storage::GetStorageConfig(
+            build_index_info->storage_config());
         auto config = get_config(build_index_info);
         // get index type
         auto index_type = milvus::index::GetValueFromConfig<std::string>(
@@ -247,8 +226,8 @@ CreateIndexV2(CIndex* res_index,
         index_info.field_type = field_type;
         index_info.dim = build_index_info->dim();
 
-        auto storage_config =
-            get_storage_config(build_index_info->storage_config());
+        auto storage_config = milvus::storage::GetStorageConfig(
+            build_index_info->storage_config());
         auto config = get_config(build_index_info);
         // get index type
         auto index_type = milvus::index::GetValueFromConfig<std::string>(
