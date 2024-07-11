@@ -23,9 +23,11 @@ const (
 	IndexRaftBruteForce  IndexType = "GPU_BRUTE_FORCE"
 	IndexFaissIDMap      IndexType = "FLAT" // no index is built.
 	IndexFaissIvfFlat    IndexType = "IVF_FLAT"
+	IndexFaissIvfFlatCC  IndexType = "IVF_FLAT_CC"
 	IndexFaissIvfPQ      IndexType = "IVF_PQ"
 	IndexScaNN           IndexType = "SCANN"
 	IndexFaissIvfSQ8     IndexType = "IVF_SQ8"
+	IndexFaissIvfSQCC    IndexType = "IVF_SQ_CC"
 	IndexFaissBinIDMap   IndexType = "BIN_FLAT"
 	IndexFaissBinIvfFlat IndexType = "BIN_IVF_FLAT"
 	IndexHNSW            IndexType = "HNSW"
@@ -47,19 +49,6 @@ func IsGpuIndex(indexType IndexType) bool {
 		indexType == IndexRaftIvfFlat ||
 		indexType == IndexRaftIvfPQ ||
 		indexType == IndexRaftCagra
-}
-
-func IsMmapSupported(indexType IndexType) bool {
-	return indexType == IndexFaissIDMap ||
-		indexType == IndexFaissIvfFlat ||
-		indexType == IndexFaissIvfPQ ||
-		indexType == IndexFaissIvfSQ8 ||
-		indexType == IndexFaissBinIDMap ||
-		indexType == IndexFaissBinIvfFlat ||
-		indexType == IndexHNSW ||
-		indexType == IndexScaNN ||
-		indexType == IndexSparseInverted ||
-		indexType == IndexSparseWand
 }
 
 func IsDiskIndex(indexType IndexType) bool {

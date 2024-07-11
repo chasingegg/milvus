@@ -22,6 +22,7 @@
 #include "log/Log.h"
 #include "storage/FileManager.h"
 #include "segcore/Types.h"
+#include "segcore/check_vec_index_c.h"
 #include "storage/Util.h"
 #include "storage/RemoteChunkManagerSingleton.h"
 #include "storage/LocalChunkManagerSingleton.h"
@@ -280,7 +281,7 @@ AppendIndexV2(CTraceContext c_trace, CLoadIndexInfo c_load_index_info) {
                 index_info, fileManagerContext);
 
         if (load_index_info->enable_mmap &&
-            load_index_info->index->IsMmapSupported()) {
+            IsMmapSupported(load_index_info->index->Type().c_str())) {
             AssertInfo(!load_index_info->mmap_dir_path.empty(),
                        "mmap directory path is empty");
             auto filepath =
@@ -367,7 +368,7 @@ AppendIndexV3(CLoadIndexInfo c_load_index_info) {
                 index_info, fileManagerContext, space);
 
         if (!load_index_info->mmap_dir_path.empty() &&
-            load_index_info->index->IsMmapSupported()) {
+            IsMmapSupported(load_index_info->index->Type().c_str())) {
             auto filepath =
                 std::filesystem::path(load_index_info->mmap_dir_path) /
                 std::to_string(load_index_info->segment_id) /

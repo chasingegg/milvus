@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package proxy
+package knowherecgowrapper
 
 /*
 #cgo pkg-config: milvus_segcore
@@ -34,5 +34,12 @@ func CheckVecIndexWithDataTypeExist(name string, dType schemapb.DataType) bool {
 	cType := uint32(dType)
 	defer C.free(unsafe.Pointer(cIndexName))
 	check := bool(C.CheckVecIndexWithDataType(cIndexName, cType))
+	return check
+}
+
+func IsMmapSupported(name string) bool {
+	cIndexName := C.CString(name)
+	defer C.free(unsafe.Pointer(cIndexName))
+	check := bool(C.IsMmapSupported(cIndexName))
 	return check
 }

@@ -18,6 +18,9 @@ extern "C" {
 bool
 CheckVecIndexWithDataType(const char* index_type, enum CDataType data_type);
 
+bool
+IsMmapSupported(const char* index_type);
+
 #ifdef __cplusplus
 }
 #endif

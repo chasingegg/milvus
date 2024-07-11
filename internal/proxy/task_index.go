@@ -28,6 +28,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/proto/indexpb"
 	"github.com/milvus-io/milvus/internal/types"
+	"github.com/milvus-io/milvus/internal/util/knowherecgowrapper"
 	"github.com/milvus-io/milvus/pkg/common"
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/mq/msgstream"
@@ -381,7 +382,7 @@ func checkTrain(field *schemapb.FieldSchema, indexParams map[string]string) erro
 	}
 
 	if typeutil.IsVectorType(field.DataType) && indexType != indexparamcheck.AutoIndex {
-		exist := CheckVecIndexWithDataTypeExist(indexType, field.DataType)
+		exist := knowherecgowrapper.CheckVecIndexWithDataTypeExist(indexType, field.DataType)
 		if !exist {
 			return fmt.Errorf("data type %d can't build with this index %s", field.DataType, indexType)
 		}

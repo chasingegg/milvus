@@ -38,6 +38,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/cgopb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/querycoordv2/params"
+	"github.com/milvus-io/milvus/internal/util/knowherecgowrapper"
 	"github.com/milvus-io/milvus/pkg/common"
 	"github.com/milvus-io/milvus/pkg/util/funcutil"
 	"github.com/milvus-io/milvus/pkg/util/indexparamcheck"
@@ -78,7 +79,7 @@ func isIndexMmapEnable(indexInfo *querypb.FieldIndexInfo) bool {
 	if !enableMmap {
 		_, ok := funcutil.KeyValuePair2Map(indexInfo.IndexParams)[common.MmapEnabledKey]
 		indexType := datacoord.GetIndexType(indexInfo.IndexParams)
-		indexSupportMmap := indexparamcheck.IsMmapSupported(indexType)
+		indexSupportMmap := knowherecgowrapper.IsMmapSupported(indexType)
 		enableMmap = !ok && params.Params.QueryNodeCfg.MmapEnabled.GetAsBool() && indexSupportMmap
 	}
 	return enableMmap

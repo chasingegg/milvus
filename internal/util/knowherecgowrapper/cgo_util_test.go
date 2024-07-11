@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package proxy
+package knowherecgowrapper
 
 import (
 	"testing"
@@ -53,6 +53,34 @@ func Test_CheckVecIndexWithDataTypeExist(t *testing.T) {
 	for _, test := range cases {
 		if got := CheckVecIndexWithDataTypeExist(test.indexType, test.dataType); got != test.want {
 			t.Errorf("CheckVecIndexWithDataTypeExist(%v, %v) = %v", test.indexType, test.dataType, test.want)
+		}
+	}
+}
+
+func Test_IsMmapSupported(t *testing.T) {
+	cases := []struct {
+		indexType string
+		want      bool
+	}{
+		{indexparamcheck.IndexHNSW, true},
+		{indexparamcheck.IndexSparseWand, true},
+		{indexparamcheck.IndexSparseInverted, true},
+		{indexparamcheck.IndexFaissBinIDMap, true},
+		{indexparamcheck.IndexFaissIDMap, true},
+		{indexparamcheck.IndexFaissIvfPQ, true},
+		{indexparamcheck.IndexFaissIvfSQ8, true},
+		{indexparamcheck.IndexFaissIvfFlat, true},
+		{indexparamcheck.IndexFaissIvfFlatCC, true},
+		{indexparamcheck.IndexFaissIvfSQCC, true},
+		{indexparamcheck.IndexScaNN, true},
+		{indexparamcheck.IndexGpuBF, false},
+		{indexparamcheck.IndexFaissBinIvfFlat, true},
+		{indexparamcheck.IndexDISKANN, false},
+	}
+
+	for _, test := range cases {
+		if got := IsMmapSupported(test.indexType); got != test.want {
+			t.Errorf("IsMmapSupported(%v, %v) = %v", test.indexType, test.want)
 		}
 	}
 }

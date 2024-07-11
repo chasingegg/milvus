@@ -73,21 +73,6 @@ class IndexBase {
     virtual const bool
     HasRawData() const = 0;
 
-    bool
-    IsMmapSupported() const {
-        return index_type_ == knowhere::IndexEnum::INDEX_HNSW ||
-               index_type_ == knowhere::IndexEnum::INDEX_FAISS_IVFFLAT ||
-               index_type_ == knowhere::IndexEnum::INDEX_FAISS_IVFFLAT_CC ||
-               index_type_ == knowhere::IndexEnum::INDEX_FAISS_IVFPQ ||
-               index_type_ == knowhere::IndexEnum::INDEX_FAISS_IVFSQ8 ||
-               index_type_ == knowhere::IndexEnum::INDEX_FAISS_BIN_IVFFLAT ||
-               index_type_ == knowhere::IndexEnum::INDEX_FAISS_IDMAP ||
-               index_type_ == knowhere::IndexEnum::INDEX_FAISS_BIN_IDMAP ||
-               index_type_ ==
-                   knowhere::IndexEnum::INDEX_SPARSE_INVERTED_INDEX ||
-               index_type_ == knowhere::IndexEnum::INDEX_SPARSE_WAND;
-    }
-
     const IndexType&
     Type() const {
         return index_type_;

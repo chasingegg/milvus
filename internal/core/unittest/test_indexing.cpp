@@ -32,6 +32,7 @@
 #include "index/IndexFactory.h"
 #include "common/QueryResult.h"
 #include "segcore/Types.h"
+#include "segcore/check_vec_index_c.h"
 #include "storage/options.h"
 #include "test_utils/indexbuilder_test_utils.h"
 #include "test_utils/storage_test_utils.h"
@@ -554,7 +555,7 @@ TEST_P(IndexTest, Mmap) {
 
     new_index = milvus::index::IndexFactory::GetInstance().CreateIndex(
         create_index_info, file_manager_context);
-    if (!new_index->IsMmapSupported()) {
+    if (!IsMmapSupported(new_index->Type().c_str())) {
         return;
     }
     vec_index = dynamic_cast<milvus::index::VectorIndex*>(new_index.get());

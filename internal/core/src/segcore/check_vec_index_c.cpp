@@ -19,3 +19,9 @@ CheckVecIndexWithDataType(const char* index_type, enum CDataType data_type) {
     return knowhere::KnowhereCheck::IndexTypeAndDataTypeCheck(
         std::string(index_type), knowhere::VecType(data_type));
 }
+
+bool
+IsMmapSupported(const char* index_type) {
+    return knowhere::KnowhereCheck::SuppportMmapIndexTypeCheck(
+        std::string(index_type));
+}
