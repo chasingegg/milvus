@@ -48,8 +48,11 @@ static std::shared_ptr<trace::TracerProvider> noop_trace_provider =
 void
 initTelemetry(const TraceConfig& cfg) {
     std::unique_ptr<opentelemetry::sdk::trace::SpanExporter> exporter;
+    LOG_INFO("init tele start");
+    LOG_INFO(cfg.exporter);
     if (cfg.exporter == "stdout") {
         exporter = ostream::OStreamSpanExporterFactory::Create();
+        LOG_INFO("stdout Trace");
     } else if (cfg.exporter == "jaeger") {
         auto opts = jaeger::JaegerExporterOptions{};
         opts.transport_format = jaeger::TransportFormat::kThriftHttp;
@@ -57,6 +60,7 @@ initTelemetry(const TraceConfig& cfg) {
         exporter = jaeger::JaegerExporterFactory::Create(opts);
         LOG_INFO("init jaeger exporter, endpoint: {}", opts.endpoint);
     } else if (cfg.exporter == "otlp") {
+        LOG_INFO("init otlp exporter, endpoint: {}", cfg.otlpEndpoint);
         auto opts = otlp::OtlpGrpcExporterOptions{};
         opts.endpoint = cfg.otlpEndpoint;
         opts.use_ssl_credentials = cfg.oltpSecure;
