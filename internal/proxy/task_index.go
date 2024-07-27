@@ -173,7 +173,7 @@ func (cit *createIndexTask) parseIndexParams() error {
 	} else {
 		specifyIndexType, exist := indexParamsMap[common.IndexTypeKey]
 		if Params.AutoIndexConfig.Enable.GetAsBool() { // `enable` only for cloud instance.
-			log.Info("create index trigger AutoIndex",
+			log.Info("FUCK create index trigger AutoIndex",
 				zap.String("original type", specifyIndexType),
 				zap.String("final type", Params.AutoIndexConfig.AutoIndexTypeName.GetValue()))
 
@@ -201,6 +201,7 @@ func (cit *createIndexTask) parseIndexParams() error {
 				indexParamsMap[common.MetricTypeKey] = metricType
 				cit.userAutoIndexMetricTypeSpecified = true
 			}
+			log.Info("FUCK create index", zap.String("param", fmt.Sprint(indexParamsMap)))
 		} else { // behavior change after 2.2.9, adapt autoindex logic here.
 			useAutoIndex := func(autoIndexConfig map[string]string) {
 				fields := make([]zap.Field, 0, len(autoIndexConfig))
@@ -293,7 +294,7 @@ func (cit *createIndexTask) parseIndexParams() error {
 			}
 		}
 	}
-
+	log.Info("FUCK autoindex done")
 	err := checkTrain(cit.fieldSchema, indexParamsMap)
 	if err != nil {
 		return merr.WrapErrParameterInvalid("valid index params", "invalid index params", err.Error())
@@ -320,6 +321,7 @@ func (cit *createIndexTask) parseIndexParams() error {
 		}
 		cit.newTypeParams = append(cit.newTypeParams, &commonpb.KeyValuePair{Key: k, Value: v})
 	}
+	log.Info("FUCK parse param done")
 
 	return nil
 }
@@ -373,6 +375,7 @@ func checkTrain(field *schemapb.FieldSchema, indexParams map[string]string) erro
 		log.Warn("Failed to get index checker", zap.String(common.IndexTypeKey, indexType))
 		return fmt.Errorf("invalid index type: %s", indexType)
 	}
+	log.Info("FUCK checker create")
 
 	if typeutil.IsVectorType(field.DataType) && indexType != indexparamcheck.AutoIndex {
 		exist := CheckVecIndexWithDataTypeExist(indexType, field.DataType)
@@ -392,6 +395,8 @@ func checkTrain(field *schemapb.FieldSchema, indexParams map[string]string) erro
 		indexParams[IsSparseKey] = "true"
 	}
 
+	log.Info("FUCK " + fmt.Sprint(indexParams))
+
 	if err := checker.CheckValidDataType(field.GetDataType()); err != nil {
 		log.Info("create index with invalid data type", zap.Error(err), zap.String("data_type", field.GetDataType().String()))
 		return err
@@ -405,6 +410,7 @@ func checkTrain(field *schemapb.FieldSchema, indexParams map[string]string) erro
 	if isSparse {
 		delete(indexParams, IsSparseKey)
 	}
+	log.Info("FUCK check train done")
 
 	return nil
 }
