@@ -374,6 +374,16 @@ SegmentGrowingImpl::vector_search(SearchInfo& search_info,
         *this, search_info, query_data, query_count, timestamp, bitset, output);
 }
 
+void
+SegmentGrowingImpl::vector_search_v2(SearchInfo& search_info,
+                                     const void* query_data,
+                                     int64_t query_count,
+                                     Timestamp timestamp,
+                                     const std::function<bool(int32_t)>& filter,
+                                     SearchResult& output) const {
+    // TODO
+}
+
 std::unique_ptr<DataArray>
 SegmentGrowingImpl::bulk_subscript(FieldId field_id,
                                    const int64_t* seg_offsets,

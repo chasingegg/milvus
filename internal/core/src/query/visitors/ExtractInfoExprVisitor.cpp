@@ -80,4 +80,55 @@ ExtractInfoExprVisitor::visit(JsonContainsExpr& expr) {
     plan_info_.add_involved_field(expr.column_.field_id);
 }
 
+bool
+ExtractInfoExprVisitor::visitv2(LogicalUnaryExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExtractInfoExprVisitor::visitv2(LogicalBinaryExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExtractInfoExprVisitor::visitv2(TermExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExtractInfoExprVisitor::visitv2(UnaryRangeExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExtractInfoExprVisitor::visitv2(BinaryRangeExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExtractInfoExprVisitor::visitv2(CompareExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExtractInfoExprVisitor::visitv2(BinaryArithOpEvalRangeExpr& expr,
+                                size_t offset) {
+    return true;
+}
+
+bool
+ExtractInfoExprVisitor::visitv2(ExistsExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExtractInfoExprVisitor::visitv2(AlwaysTrueExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExtractInfoExprVisitor::visitv2(JsonContainsExpr& expr, size_t offset) {
+    return true;
+}
+
 }  // namespace milvus::query

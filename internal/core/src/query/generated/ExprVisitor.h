@@ -48,5 +48,35 @@ class ExprVisitor {
 
     virtual void
     visit(JsonContainsExpr&) = 0;
+
+    virtual bool
+    visitv2(LogicalUnaryExpr&, size_t) = 0;
+
+    virtual bool
+    visitv2(LogicalBinaryExpr&, size_t) = 0;
+
+    virtual bool
+    visitv2(TermExpr&, size_t) = 0;
+
+    virtual bool
+    visitv2(UnaryRangeExpr&, size_t) = 0;
+
+    virtual bool
+    visitv2(BinaryArithOpEvalRangeExpr&, size_t) = 0;
+
+    virtual bool
+    visitv2(BinaryRangeExpr&, size_t) = 0;
+
+    virtual bool
+    visitv2(CompareExpr&, size_t) = 0;
+
+    virtual bool
+    visitv2(ExistsExpr&, size_t) = 0;
+
+    virtual bool
+    visitv2(AlwaysTrueExpr&, size_t) = 0;
+
+    virtual bool
+    visitv2(JsonContainsExpr&, size_t) = 0;
 };
 }  // namespace milvus::query

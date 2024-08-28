@@ -48,6 +48,36 @@ class ExtractInfoExprVisitor : public ExprVisitor {
     void
     visit(JsonContainsExpr& expr) override;
 
+    bool
+    visitv2(LogicalUnaryExpr& expr, size_t offset) override;
+
+    bool
+    visitv2(LogicalBinaryExpr& expr, size_t offset) override;
+
+    bool
+    visitv2(TermExpr& expr, size_t offset) override;
+
+    bool
+    visitv2(UnaryRangeExpr& expr, size_t offset) override;
+
+    bool
+    visitv2(BinaryArithOpEvalRangeExpr& expr, size_t offset) override;
+
+    bool
+    visitv2(BinaryRangeExpr& expr, size_t offset) override;
+
+    bool
+    visitv2(CompareExpr& expr, size_t offset) override;
+
+    bool
+    visitv2(ExistsExpr& expr, size_t offset) override;
+
+    bool
+    visitv2(AlwaysTrueExpr& expr, size_t offset) override;
+
+    bool
+    visitv2(JsonContainsExpr& expr, size_t offset) override;
+
  public:
     explicit ExtractInfoExprVisitor(ExtractedPlanInfo& plan_info)
         : plan_info_(plan_info) {

@@ -37,4 +37,23 @@ SearchOnSealed(const Schema& schema,
                const BitsetView& bitset,
                SearchResult& result);
 
+void
+SearchOnSealedIndexv2(const Schema& schema,
+                      const segcore::SealedIndexingRecord& record,
+                      const SearchInfo& search_info,
+                      const void* query_data,
+                      int64_t num_queries,
+                      const std::function<bool(int32_t)>& filter,
+                      SearchResult& search_result);
+
+void
+SearchOnSealedv2(const Schema& schema,
+                 const void* vec_data,
+                 const SearchInfo& search_info,
+                 const void* query_data,
+                 int64_t num_queries,
+                 int64_t row_count,
+                 const std::function<bool(int32_t)>& filter,
+                 SearchResult& result);
+
 }  // namespace milvus::query

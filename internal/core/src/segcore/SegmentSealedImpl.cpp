@@ -807,6 +807,70 @@ SegmentSealedImpl::vector_search(SearchInfo& search_info,
     }
 }
 
+void
+SegmentSealedImpl::vector_search_v2(SearchInfo& search_info,
+                                    const void* query_data,
+                                    int64_t query_count,
+                                    Timestamp timestamp,
+                                    const std::function<bool(int32_t)>& filter,
+                                    SearchResult& output) const {
+    AssertInfo(is_system_field_ready(), "System field is not ready");
+    auto field_id = search_info.field_id_;
+    auto& field_meta = schema_->operator[](field_id);
+
+    AssertInfo(field_meta.is_vector(),
+               "The meta type of vector field is not vector type");
+    if (get_bit(binlog_index_bitset_, field_id)) {
+        AssertInfo(
+            vec_binlog_config_.find(field_id) != vec_binlog_config_.end(),
+            "The binlog params is not generate.");
+        auto binlog_search_info =
+            vec_binlog_config_.at(field_id)->GetSearchConf(search_info);
+
+        AssertInfo(vector_indexings_.is_ready(field_id),
+                   "vector indexes isn't ready for field " +
+                       std::to_string(field_id.get()));
+        query::SearchOnSealedIndexv2(*schema_,
+                                     vector_indexings_,
+                                     binlog_search_info,
+                                     query_data,
+                                     query_count,
+                                     filter,
+                                     output);
+        milvus::tracer::AddEvent(
+            "finish_searching_vector_temperate_binlog_index");
+    } else if (get_bit(index_ready_bitset_, field_id)) {
+        AssertInfo(vector_indexings_.is_ready(field_id),
+                   "vector indexes isn't ready for field " +
+                       std::to_string(field_id.get()));
+        query::SearchOnSealedIndexv2(*schema_,
+                                     vector_indexings_,
+                                     search_info,
+                                     query_data,
+                                     query_count,
+                                     filter,
+                                     output);
+        milvus::tracer::AddEvent("finish_searching_vector_index");
+    } else {
+        // TODO
+        // AssertInfo(
+        //     get_bit(field_data_ready_bitset_, field_id),
+        //     "Field Data is not loaded: " + std::to_string(field_id.get()));
+        // AssertInfo(num_rows_.has_value(), "Can't get row count value");
+        // auto row_count = num_rows_.value();
+        // auto vec_data = fields_.at(field_id);
+        // query::SearchOnSealed(*schema_,
+        //                       vec_data->Data(),
+        //                       search_info,
+        //                       query_data,
+        //                       query_count,
+        //                       row_count,
+        //                       filter,
+        //                       output);
+        // milvus::tracer::AddEvent("finish_searching_vector_data");
+    }
+}
+
 std::tuple<std::string, int64_t>
 SegmentSealedImpl::GetFieldDataPath(FieldId field_id, int64_t offset) const {
     auto offset_in_binlog = offset;

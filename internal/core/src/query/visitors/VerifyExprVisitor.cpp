@@ -62,4 +62,64 @@ VerifyExprVisitor::visit(JsonContainsExpr& expr) {
     // TODO
 }
 
+bool
+VerifyExprVisitor::visitv2(LogicalUnaryExpr& expr, size_t offset) {
+    // TODO
+    return true;
+}
+
+bool
+VerifyExprVisitor::visitv2(LogicalBinaryExpr& expr, size_t offset) {
+    // TODO
+    return true;
+}
+
+bool
+VerifyExprVisitor::visitv2(TermExpr& expr, size_t offset) {
+    // TODO
+    return true;
+}
+
+bool
+VerifyExprVisitor::visitv2(UnaryRangeExpr& expr, size_t offset) {
+    // TODO
+    return true;
+}
+
+bool
+VerifyExprVisitor::visitv2(BinaryArithOpEvalRangeExpr& expr, size_t offset) {
+    // TODO
+    return true;
+}
+
+bool
+VerifyExprVisitor::visitv2(BinaryRangeExpr& expr, size_t offset) {
+    // TODO
+    return true;
+}
+
+bool
+VerifyExprVisitor::visitv2(CompareExpr& expr, size_t offset) {
+    // TODO
+    return true;
+}
+
+bool
+VerifyExprVisitor::visitv2(ExistsExpr& expr, size_t offset) {
+    // TODO
+    return true;
+}
+
+bool
+VerifyExprVisitor::visitv2(JsonContainsExpr& expr, size_t offset) {
+    // TODO
+    return true;
+}
+
+bool
+VerifyExprVisitor::visitv2(AlwaysTrueExpr& expr, size_t offset) {
+    // TODO
+    return true;
+}
+
 }  // namespace milvus::query

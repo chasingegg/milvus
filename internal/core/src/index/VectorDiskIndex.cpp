@@ -326,6 +326,95 @@ VectorDiskAnnIndex<T>::Query(const DatasetPtr dataset,
 }
 
 template <typename T>
+void
+VectorDiskAnnIndex<T>::Queryv2(const DatasetPtr dataset,
+                               const SearchInfo& search_info,
+                               const std::function<bool(int32_t)>& filter,
+                               SearchResult& search_result) const {
+    AssertInfo(GetMetricType() == search_info.metric_type_,
+               "Metric type of field index isn't the same with search info");
+    auto num_queries = dataset->GetRows();
+    auto topk = search_info.topk_;
+
+    knowhere::Json search_config = PrepareSearchParams(search_info);
+
+    if (GetIndexType() == knowhere::IndexEnum::INDEX_DISKANN) {
+        // set search list size
+        if (CheckKeyInConfig(search_info.search_params_, DISK_ANN_QUERY_LIST)) {
+            search_config[DISK_ANN_SEARCH_LIST_SIZE] =
+                search_info.search_params_[DISK_ANN_QUERY_LIST];
+        }
+        // set beamwidth
+        search_config[DISK_ANN_QUERY_BEAMWIDTH] = int(search_beamwidth_);
+        // set json reset field, will be removed later
+        search_config[DISK_ANN_PQ_CODE_BUDGET] = 0.0;
+    }
+
+    // set index prefix, will be removed later
+    auto local_index_path_prefix = file_manager_->GetLocalIndexObjectPrefix();
+    search_config[DISK_ANN_PREFIX_PATH] = local_index_path_prefix;
+
+    auto final = [&] {
+        auto radius =
+            GetValueFromConfig<float>(search_info.search_params_, RADIUS);
+        // if (radius.has_value()) {
+        //     search_config[RADIUS] = radius.value();
+        //     // `range_search_k` is only used as one of the conditions for iterator early termination.
+        //     // not gurantee to return exactly `range_search_k` results, which may be more or less.
+        //     // set it to -1 will return all results in the range.
+        //     search_config[knowhere::meta::RANGE_SEARCH_K] = topk;
+        //     auto range_filter = GetValueFromConfig<float>(
+        //         search_info.search_params_, RANGE_FILTER);
+        //     if (range_filter.has_value()) {
+        //         search_config[RANGE_FILTER] = range_filter.value();
+        //         CheckRangeSearchParam(search_config[RADIUS],
+        //                               search_config[RANGE_FILTER],
+        //                               GetMetricType());
+        //     }
+        //     auto res = index_.RangeSearch(dataset, search_config, bitset);
+
+        //     if (!res.has_value()) {
+        //         PanicInfo(ErrorCode::UnexpectedError,
+        //                   fmt::format("failed to range search: {}: {}",
+        //                               KnowhereStatusString(res.error()),
+        //                               res.what()));
+        //     }
+        //     return ReGenRangeSearchResult(
+        //         res.value(), topk, num_queries, GetMetricType());
+        // } else {
+        auto res = index_.Search(dataset, search_config, {});
+        if (!res.has_value()) {
+            PanicInfo(ErrorCode::UnexpectedError,
+                      fmt::format("failed to search: {}: {}",
+                                  KnowhereStatusString(res.error()),
+                                  res.what()));
+        }
+        return res.value();
+        // }
+    }();
+
+    auto ids = final->GetIds();
+    float* distances = const_cast<float*>(final->GetDistance());
+    final->SetIsOwner(true);
+
+    auto round_decimal = search_info.round_decimal_;
+    auto total_num = num_queries * topk;
+
+    if (round_decimal != -1) {
+        const float multiplier = pow(10.0, round_decimal);
+        for (int i = 0; i < total_num; i++) {
+            distances[i] = std::round(distances[i] * multiplier) / multiplier;
+        }
+    }
+    search_result.seg_offsets_.resize(total_num);
+    search_result.distances_.resize(total_num);
+    search_result.total_nq_ = num_queries;
+    search_result.unity_topK_ = topk;
+    std::copy_n(ids, total_num, search_result.seg_offsets_.data());
+    std::copy_n(distances, total_num, search_result.distances_.data());
+}
+
+template <typename T>
 knowhere::expected<std::vector<knowhere::IndexNode::IteratorPtr>>
 VectorDiskAnnIndex<T>::VectorIterators(const DatasetPtr dataset,
                                        const knowhere::Json& conf,

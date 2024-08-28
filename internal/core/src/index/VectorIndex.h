@@ -60,6 +60,12 @@ class VectorIndex : public IndexBase {
           const BitsetView& bitset,
           SearchResult& search_result) const = 0;
 
+    virtual void
+    Queryv2(const DatasetPtr dataset,
+            const SearchInfo& search_info,
+            const std::function<bool(int32_t)>& filter,
+            SearchResult& search_result) const = 0;
+
     virtual knowhere::expected<std::vector<knowhere::IndexNode::IteratorPtr>>
     VectorIterators(const DatasetPtr dataset,
                     const knowhere::Json& json,

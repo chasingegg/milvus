@@ -74,6 +74,12 @@ class VectorDiskAnnIndex : public VectorIndex {
           const BitsetView& bitset,
           SearchResult& search_result) const override;
 
+    void
+    Queryv2(const DatasetPtr dataset,
+            const SearchInfo& search_info,
+            const std::function<bool(int32_t)>& filter,
+            SearchResult& search_result) const override;
+
     const bool
     HasRawData() const override;
 

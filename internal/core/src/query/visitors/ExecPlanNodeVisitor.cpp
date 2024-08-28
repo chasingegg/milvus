@@ -81,10 +81,10 @@ ExecPlanNodeVisitor::ExecuteExprNode(
     int64_t active_count,
     BitsetType& bitset_holder) {
     bitset_holder.clear();
-    LOG_DEBUG("plannode: {}, active_count: {}, timestamp: {}",
-              plannode->ToString(),
-              active_count,
-              timestamp_);
+    // LOG_INFO("FUCK plannode: {}, active_count: {}, timestamp: {}",
+    //          plannode->ToString(),
+    //          active_count,
+    //          timestamp_);
     auto plan = plan::PlanFragment(plannode);
     // TODO: get query id from proxy
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
@@ -163,15 +163,35 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
     std::chrono::high_resolution_clock::time_point scalar_start =
         std::chrono::high_resolution_clock::now();
     std::unique_ptr<BitsetType> bitset_holder;
-    if (node.filter_plannode_.has_value()) {
-        BitsetType expr_res;
-        ExecuteExprNode(
-            node.filter_plannode_.value(), segment, active_count, expr_res);
-        bitset_holder = std::make_unique<BitsetType>(expr_res.clone());
+
+    auto test_valid = [&](int32_t offset) -> bool {
+        auto res = ExecExprVisitor(*segment, this, active_count, timestamp_)
+                       .call_child_v2(*node.predicate_.value(), offset);
+        //          std::unique_ptr<BitsetType> bitset_holder = std::make_unique<BitsetType>(
+        //     ExecExprVisitor(*segment, this, active_count, timestamp_)
+        //         .call_child(*node.predicate_.value()));
+        // bitset_holder->flip();
+        // bitset_holder->flip();
+        // BitsetView final_view = *bitset_holder;
+        return true;
+    };
+    if (node.predicate_.has_value()) {
+        bitset_holder = std::make_unique<BitsetType>(
+            ExecExprVisitor(*segment, this, active_count, timestamp_)
+                .call_child(*node.predicate_.value()));
         bitset_holder->flip();
     } else {
         bitset_holder = std::make_unique<BitsetType>(active_count, false);
     }
+    // if (node.filter_plannode_.has_value()) {
+    //     BitsetType expr_res;
+    //     ExecuteExprNode(
+    //         node.filter_plannode_.value(), segment, active_count, expr_res);
+    //     bitset_holder = std::make_unique<BitsetType>(expr_res.clone());
+    //     bitset_holder->flip();
+    // } else {
+    //     bitset_holder = std::make_unique<BitsetType>(active_count, false);
+    // }
     segment->mask_with_timestamps(*bitset_holder, timestamp_);
 
     segment->mask_with_delete(*bitset_holder, active_count, timestamp_);
@@ -192,12 +212,13 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
     std::chrono::high_resolution_clock::time_point vector_start =
         std::chrono::high_resolution_clock::now();
     BitsetView final_view = *bitset_holder;
-    segment->vector_search(node.search_info_,
-                           src_data,
-                           num_queries,
-                           timestamp_,
-                           final_view,
-                           search_result);
+    // LOG_INFO("FUCK filter out num: {}", final_view.get_filtered_out_num_());
+    segment->vector_search_v2(node.search_info_,
+                              src_data,
+                              num_queries,
+                              timestamp_,
+                              test_valid,
+                              search_result);
     search_result.total_data_cnt_ = final_view.size();
     if (search_result.vector_iterators_.has_value()) {
         AssertInfo(search_result.vector_iterators_.value().size() ==

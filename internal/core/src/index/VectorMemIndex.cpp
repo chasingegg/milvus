@@ -437,6 +437,79 @@ VectorMemIndex<T>::Query(const DatasetPtr dataset,
 }
 
 template <typename T>
+void
+VectorMemIndex<T>::Queryv2(const DatasetPtr dataset,
+                           const SearchInfo& search_info,
+                           const std::function<bool(int32_t)>& filter,
+                           SearchResult& search_result) const {
+    //    AssertInfo(GetMetricType() == search_info.metric_type_,
+    //               "Metric type of field index isn't the same with search info");
+
+    auto num_queries = dataset->GetRows();
+    knowhere::Json search_conf = PrepareSearchParams(search_info);
+    auto topk = search_info.topk_;
+    // TODO :: check dim of search data
+    auto final = [&] {
+        auto index_type = GetIndexType();
+        // if (CheckKeyInConfig(search_conf, RADIUS)) {
+        //     if (CheckKeyInConfig(search_conf, RANGE_FILTER)) {
+        //         CheckRangeSearchParam(search_conf[RADIUS],
+        //                               search_conf[RANGE_FILTER],
+        //                               GetMetricType());
+        //     }
+        //     // `range_search_k` is only used as one of the conditions for iterator early termination.
+        //     // not gurantee to return exactly `range_search_k` results, which may be more or less.
+        //     // set it to -1 will return all results in the range.
+        //     search_conf[knowhere::meta::RANGE_SEARCH_K] = topk;
+        //     milvus::tracer::AddEvent("start_knowhere_index_range_search");
+        //     auto res = index_.RangeSearch(dataset, search_conf, bitset);
+        //     milvus::tracer::AddEvent("finish_knowhere_index_range_search");
+        //     if (!res.has_value()) {
+        //         PanicInfo(ErrorCode::UnexpectedError,
+        //                   "failed to range search: {}: {}",
+        //                   KnowhereStatusString(res.error()),
+        //                   res.what());
+        //     }
+        //     auto result = ReGenRangeSearchResult(
+        //         res.value(), topk, num_queries, GetMetricType());
+        //     milvus::tracer::AddEvent("finish_ReGenRangeSearchResult");
+        //     return result;
+        // } else {
+        milvus::tracer::AddEvent("start_knowhere_index_search");
+        filter(0);
+        auto res = index_.Search(dataset, search_conf, {});
+        milvus::tracer::AddEvent("finish_knowhere_index_search");
+        if (!res.has_value()) {
+            PanicInfo(ErrorCode::UnexpectedError,
+                      "failed to search: {}: {}",
+                      KnowhereStatusString(res.error()),
+                      res.what());
+        }
+        return res.value();
+        // }
+    }();
+
+    auto ids = final->GetIds();
+    float* distances = const_cast<float*>(final->GetDistance());
+    final->SetIsOwner(true);
+    auto round_decimal = search_info.round_decimal_;
+    auto total_num = num_queries * topk;
+
+    if (round_decimal != -1) {
+        const float multiplier = pow(10.0, round_decimal);
+        for (int i = 0; i < total_num; i++) {
+            distances[i] = std::round(distances[i] * multiplier) / multiplier;
+        }
+    }
+    search_result.seg_offsets_.resize(total_num);
+    search_result.distances_.resize(total_num);
+    search_result.total_nq_ = num_queries;
+    search_result.unity_topK_ = topk;
+    std::copy_n(ids, total_num, search_result.seg_offsets_.data());
+    std::copy_n(distances, total_num, search_result.distances_.data());
+}
+
+template <typename T>
 const bool
 VectorMemIndex<T>::HasRawData() const {
     return index_.HasRawData(GetMetricType());

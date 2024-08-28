@@ -61,6 +61,8 @@ struct Expr {
     virtual ~Expr() = default;
     virtual void
     accept(ExprVisitor&) = 0;
+    virtual bool
+    acceptv2(ExprVisitor&, size_t) = 0;
 };
 
 using ExprPtr = std::unique_ptr<Expr>;
@@ -96,6 +98,8 @@ struct LogicalUnaryExpr : UnaryExprBase {
  public:
     void
     accept(ExprVisitor&) override;
+    bool
+    acceptv2(ExprVisitor&, size_t) override;
 };
 
 struct LogicalBinaryExpr : BinaryExprBase {
@@ -116,6 +120,8 @@ struct LogicalBinaryExpr : BinaryExprBase {
  public:
     void
     accept(ExprVisitor&) override;
+    bool
+    acceptv2(ExprVisitor&, size_t) override;
 };
 
 struct TermExpr : Expr {
@@ -138,6 +144,8 @@ struct TermExpr : Expr {
  public:
     void
     accept(ExprVisitor&) override;
+    bool
+    acceptv2(ExprVisitor&, size_t) override;
 };
 
 static const std::map<std::string, ArithOpType> arith_op_mapping_ = {
@@ -182,6 +190,8 @@ struct BinaryArithOpEvalRangeExpr : Expr {
  public:
     void
     accept(ExprVisitor&) override;
+    bool
+    acceptv2(ExprVisitor&, size_t) override;
 };
 
 static const std::map<std::string, OpType> mapping_ = {
@@ -214,6 +224,8 @@ struct UnaryRangeExpr : Expr {
  public:
     void
     accept(ExprVisitor&) override;
+    bool
+    acceptv2(ExprVisitor&, size_t) override;
 };
 
 struct BinaryRangeExpr : Expr {
@@ -239,6 +251,8 @@ struct BinaryRangeExpr : Expr {
  public:
     void
     accept(ExprVisitor&) override;
+    bool
+    acceptv2(ExprVisitor&, size_t) override;
 };
 
 struct CompareExpr : Expr {
@@ -251,6 +265,8 @@ struct CompareExpr : Expr {
  public:
     void
     accept(ExprVisitor&) override;
+    bool
+    acceptv2(ExprVisitor&, size_t) override;
 };
 
 struct ExistsExpr : Expr {
@@ -266,12 +282,16 @@ struct ExistsExpr : Expr {
  public:
     void
     accept(ExprVisitor&) override;
+    bool
+    acceptv2(ExprVisitor&, size_t) override;
 };
 
 struct AlwaysTrueExpr : Expr {
  public:
     void
     accept(ExprVisitor&) override;
+    bool
+    acceptv2(ExprVisitor&, size_t) override;
 };
 
 inline ExprPtr
@@ -301,6 +321,8 @@ struct JsonContainsExpr : Expr {
  public:
     void
     accept(ExprVisitor&) override;
+    bool
+    acceptv2(ExprVisitor&, size_t) override;
 };
 
 inline bool

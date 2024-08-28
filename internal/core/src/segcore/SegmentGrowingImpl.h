@@ -258,6 +258,14 @@ class SegmentGrowingImpl : public SegmentGrowing {
                   const BitsetView& bitset,
                   SearchResult& output) const override;
 
+    void
+    vector_search_v2(SearchInfo& search_info,
+                     const void* query_data,
+                     int64_t query_count,
+                     Timestamp timestamp,
+                     const std::function<bool(int32_t)>& filter,
+                     SearchResult& output) const override;
+
     DataType
     GetFieldDataType(FieldId fieldId) const override;
 

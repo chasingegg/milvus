@@ -43,73 +43,73 @@ namespace milvus::query {
 // THIS CONTAINS EXTRA BODY FOR VISITOR
 // WILL BE USED BY GENERATOR
 namespace impl {
-class ExecExprVisitor : ExprVisitor {
- public:
-    ExecExprVisitor(const segcore::SegmentInternalInterface& segment,
-                    int64_t row_count,
-                    Timestamp timestamp)
-        : segment_(segment), row_count_(row_count), timestamp_(timestamp) {
-    }
+// class ExecExprVisitor : ExprVisitor {
+//  public:
+//     ExecExprVisitor(const segcore::SegmentInternalInterface& segment,
+//                     int64_t row_count,
+//                     Timestamp timestamp)
+//         : segment_(segment), row_count_(row_count), timestamp_(timestamp) {
+//     }
 
-    BitsetType
-    call_child(Expr& expr) {
-        AssertInfo(!bitset_opt_.has_value(),
-                   "[ExecExprVisitor]Bitset already has value before accept");
-        expr.accept(*this);
-        AssertInfo(bitset_opt_.has_value(),
-                   "[ExecExprVisitor]Bitset doesn't have value after accept");
-        auto res = std::move(bitset_opt_);
-        bitset_opt_ = std::nullopt;
-        return std::move(res.value());
-    }
+//     BitsetType
+//     call_child(Expr& expr) {
+//         AssertInfo(!bitset_opt_.has_value(),
+//                    "[ExecExprVisitor]Bitset already has value before accept");
+//         expr.accept(*this);
+//         AssertInfo(bitset_opt_.has_value(),
+//                    "[ExecExprVisitor]Bitset doesn't have value after accept");
+//         auto res = std::move(bitset_opt_);
+//         bitset_opt_ = std::nullopt;
+//         return std::move(res.value());
+//     }
 
- public:
-    template <typename T,
-              typename IndexFunc,
-              typename ElementFunc,
-              typename SkipIndexFunc>
-    auto
-    ExecRangeVisitorImpl(FieldId field_id,
-                         IndexFunc func,
-                         ElementFunc element_func,
-                         SkipIndexFunc skip_index_func) -> BitsetType;
+//  public:
+//     template <typename T,
+//               typename IndexFunc,
+//               typename ElementFunc,
+//               typename SkipIndexFunc>
+//     auto
+//     ExecRangeVisitorImpl(FieldId field_id,
+//                          IndexFunc func,
+//                          ElementFunc element_func,
+//                          SkipIndexFunc skip_index_func) -> BitsetType;
 
-    template <typename T>
-    auto
-    ExecUnaryRangeVisitorDispatcherImpl(UnaryRangeExpr& expr_raw) -> BitsetType;
+//     template <typename T>
+//     auto
+//     ExecUnaryRangeVisitorDispatcherImpl(UnaryRangeExpr& expr_raw) -> BitsetType;
 
-    template <typename T>
-    auto
-    ExecUnaryRangeVisitorDispatcher(UnaryRangeExpr& expr_raw) -> BitsetType;
+//     template <typename T>
+//     auto
+//     ExecUnaryRangeVisitorDispatcher(UnaryRangeExpr& expr_raw) -> BitsetType;
 
-    template <typename T>
-    auto
-    ExecBinaryArithOpEvalRangeVisitorDispatcher(
-        BinaryArithOpEvalRangeExpr& expr_raw) -> BitsetType;
+//     template <typename T>
+//     auto
+//     ExecBinaryArithOpEvalRangeVisitorDispatcher(
+//         BinaryArithOpEvalRangeExpr& expr_raw) -> BitsetType;
 
-    template <typename T>
-    auto
-    ExecBinaryRangeVisitorDispatcher(BinaryRangeExpr& expr_raw) -> BitsetType;
+//     template <typename T>
+//     auto
+//     ExecBinaryRangeVisitorDispatcher(BinaryRangeExpr& expr_raw) -> BitsetType;
 
-    template <typename T>
-    auto
-    ExecTermVisitorImpl(TermExpr& expr_raw) -> BitsetType;
+//     template <typename T>
+//     auto
+//     ExecTermVisitorImpl(TermExpr& expr_raw) -> BitsetType;
 
-    template <typename T>
-    auto
-    ExecTermVisitorImplTemplate(TermExpr& expr_raw) -> BitsetType;
+//     template <typename T>
+//     auto
+//     ExecTermVisitorImplTemplate(TermExpr& expr_raw) -> BitsetType;
 
-    template <typename CmpFunc>
-    auto
-    ExecCompareExprDispatcher(CompareExpr& expr, CmpFunc cmp_func)
-        -> BitsetType;
+//     template <typename CmpFunc>
+//     auto
+//     ExecCompareExprDispatcher(CompareExpr& expr, CmpFunc cmp_func)
+//         -> BitsetType;
 
- private:
-    const segcore::SegmentInternalInterface& segment_;
-    int64_t row_count_;
-    Timestamp timestamp_;
-    BitsetTypeOpt bitset_opt_;
-};
+//  private:
+//     const segcore::SegmentInternalInterface& segment_;
+//     int64_t row_count_;
+//     Timestamp timestamp_;
+//     BitsetTypeOpt bitset_opt_;
+// };
 }  // namespace impl
 
 void
@@ -3520,6 +3520,56 @@ ExecExprVisitor::visit(JsonContainsExpr& expr) {
     AssertInfo(res.size() == row_count_,
                "[ExecExprVisitor]Size of results not equal row count");
     bitset_opt_ = std::move(res);
+}
+
+bool
+ExecExprVisitor::visitv2(LogicalUnaryExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExecExprVisitor::visitv2(LogicalBinaryExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExecExprVisitor::visitv2(TermExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExecExprVisitor::visitv2(UnaryRangeExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExecExprVisitor::visitv2(BinaryRangeExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExecExprVisitor::visitv2(CompareExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExecExprVisitor::visitv2(BinaryArithOpEvalRangeExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExecExprVisitor::visitv2(ExistsExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExecExprVisitor::visitv2(AlwaysTrueExpr& expr, size_t offset) {
+    return true;
+}
+
+bool
+ExecExprVisitor::visitv2(JsonContainsExpr& expr, size_t offset) {
+    return true;
 }
 
 }  // namespace milvus::query

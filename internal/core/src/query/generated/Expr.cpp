@@ -13,6 +13,7 @@
 // DO NOT EDIT
 #include "query/Expr.h"
 #include "ExprVisitor.h"
+#include "log/Log.h"
 
 namespace milvus::query {
 void
@@ -62,5 +63,54 @@ AlwaysTrueExpr::accept(ExprVisitor& visitor) {
 void
 JsonContainsExpr::accept(ExprVisitor& visitor) {
     visitor.visit(*this);
+}
+
+bool
+LogicalUnaryExpr::acceptv2(ExprVisitor& visitor, size_t offset) {
+    return visitor.visitv2(*this, offset);
+}
+
+bool
+LogicalBinaryExpr::acceptv2(ExprVisitor& visitor, size_t offset) {
+    return visitor.visitv2(*this, offset);
+}
+
+bool
+TermExpr::acceptv2(ExprVisitor& visitor, size_t offset) {
+    return visitor.visitv2(*this, offset);
+}
+
+bool
+UnaryRangeExpr::acceptv2(ExprVisitor& visitor, size_t offset) {
+    return visitor.visitv2(*this, offset);
+}
+
+bool
+BinaryArithOpEvalRangeExpr::acceptv2(ExprVisitor& visitor, size_t offset) {
+    return visitor.visitv2(*this, offset);
+}
+bool
+BinaryRangeExpr::acceptv2(ExprVisitor& visitor, size_t offset) {
+    return visitor.visitv2(*this, offset);
+}
+
+bool
+CompareExpr::acceptv2(ExprVisitor& visitor, size_t offset) {
+    return visitor.visitv2(*this, offset);
+}
+
+bool
+ExistsExpr::acceptv2(ExprVisitor& visitor, size_t offset) {
+    return visitor.visitv2(*this, offset);
+}
+
+bool
+AlwaysTrueExpr::acceptv2(ExprVisitor& visitor, size_t offset) {
+    return visitor.visitv2(*this, offset);
+}
+
+bool
+JsonContainsExpr::acceptv2(ExprVisitor& visitor, size_t offset) {
+    return visitor.visitv2(*this, offset);
 }
 }  // namespace milvus::query

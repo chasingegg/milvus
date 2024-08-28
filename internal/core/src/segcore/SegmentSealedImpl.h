@@ -262,6 +262,14 @@ class SegmentSealedImpl : public SegmentSealed {
                   SearchResult& output) const override;
 
     void
+    vector_search_v2(SearchInfo& search_info,
+                     const void* query_data,
+                     int64_t query_count,
+                     Timestamp timestamp,
+                     const std::function<bool(int32_t)>& filter,
+                     SearchResult& output) const override;
+
+    void
     mask_with_delete(BitsetType& bitset,
                      int64_t ins_barrier,
                      Timestamp timestamp) const override;

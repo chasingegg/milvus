@@ -111,4 +111,94 @@ SearchOnSealed(const Schema& schema,
     result.total_nq_ = dataset.num_queries;
 }
 
+void
+SearchOnSealedIndexv2(const Schema& schema,
+                      const segcore::SealedIndexingRecord& record,
+                      const SearchInfo& search_info,
+                      const void* query_data,
+                      int64_t num_queries,
+                      const std::function<bool(int32_t)>& filter,
+                      SearchResult& search_result) {
+    auto topK = search_info.topk_;
+    auto round_decimal = search_info.round_decimal_;
+
+    auto field_id = search_info.field_id_;
+    auto& field = schema[field_id];
+    auto is_sparse = field.get_data_type() == DataType::VECTOR_SPARSE_FLOAT;
+    // TODO(SPARSE): see todo in PlanImpl.h::PlaceHolder.
+    auto dim = is_sparse ? 0 : field.get_dim();
+
+    AssertInfo(record.is_ready(field_id), "[SearchOnSealed]Record isn't ready");
+    // Keep the field_indexing smart pointer, until all reference by raw dropped.
+    auto field_indexing = record.get_field_indexing(field_id);
+    AssertInfo(field_indexing->metric_type_ == search_info.metric_type_,
+               "Metric type of field index isn't the same with search info");
+
+    auto dataset = knowhere::GenDataSet(num_queries, dim, query_data);
+    dataset->SetIsSparse(is_sparse);
+    auto vec_index =
+        dynamic_cast<index::VectorIndex*>(field_indexing->indexing_.get());
+    // if (!PrepareVectorIteratorsFromIndex(search_info,
+    //                                      num_queries,
+    //                                      dataset,
+    //                                      search_result,
+    //                                      filter,
+    //                                      *vec_index)) {
+    auto index_type = vec_index->GetIndexType();
+    vec_index->Queryv2(dataset, search_info, filter, search_result);
+    float* distances = search_result.distances_.data();
+    auto total_num = num_queries * topK;
+    if (round_decimal != -1) {
+        const float multiplier = pow(10.0, round_decimal);
+        for (int i = 0; i < total_num; i++) {
+            distances[i] = std::round(distances[i] * multiplier) / multiplier;
+        }
+    }
+    // }
+    search_result.total_nq_ = num_queries;
+    search_result.unity_topK_ = topK;
+}
+
+void
+SearchOnSealedv2(const Schema& schema,
+                 const void* vec_data,
+                 const SearchInfo& search_info,
+                 const void* query_data,
+                 int64_t num_queries,
+                 int64_t row_count,
+                 const std::function<bool(int32_t)>& filter,
+                 SearchResult& result) {
+    auto field_id = search_info.field_id_;
+    auto& field = schema[field_id];
+
+    // TODO(SPARSE): see todo in PlanImpl.h::PlaceHolder.
+    auto dim = field.get_data_type() == DataType::VECTOR_SPARSE_FLOAT
+                   ? 0
+                   : field.get_dim();
+
+    query::dataset::SearchDataset dataset{search_info.metric_type_,
+                                          num_queries,
+                                          search_info.topk_,
+                                          search_info.round_decimal_,
+                                          dim,
+                                          query_data};
+
+    auto data_type = field.get_data_type();
+    //
+    // CheckBruteForceSearchParam(field, search_info);
+    // if (search_info.group_by_field_id_.has_value()) {
+    //     auto sub_qr = BruteForceSearchIterators(
+    //         dataset, vec_data, row_count, search_info, bitset, data_type);
+    //     result.AssembleChunkVectorIterators(
+    //         num_queries, 1, -1, sub_qr.chunk_iterators());
+    // } else {
+    //     auto sub_qr = BruteForceSearch(
+    //         dataset, vec_data, row_count, search_info, bitset, data_type);
+    //     result.distances_ = std::move(sub_qr.mutable_distances());
+    //     result.seg_offsets_ = std::move(sub_qr.mutable_seg_offsets());
+    // }
+    result.unity_topK_ = dataset.topk;
+    result.total_nq_ = dataset.num_queries;
+}
+
 }  // namespace milvus::query
