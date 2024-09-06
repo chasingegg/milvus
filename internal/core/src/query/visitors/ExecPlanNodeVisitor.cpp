@@ -227,6 +227,8 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
             .count();
     monitor::internal_core_search_latency_vector.Observe(vector_cost);
 
+    LOG_INFO("expr cost: {} us, vector cost: {} us", scalar_cost, vector_cost);
+
     double total_cost =
         std::chrono::duration<double, std::micro>(vector_end - scalar_start)
             .count();
