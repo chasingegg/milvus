@@ -176,6 +176,11 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
     } else {
         bitset_holder = std::make_unique<BitsetType>(active_count, false);
     }
+    std::chrono::high_resolution_clock::time_point scalar_end1 =
+        std::chrono::high_resolution_clock::now();
+    double scalar_cost1 =
+        std::chrono::duration<double, std::micro>(scalar_end1 - scalar_start)
+            .count();
     segment->mask_with_timestamps(*bitset_holder, timestamp_);
 
     segment->mask_with_delete(*bitset_holder, active_count, timestamp_);
@@ -188,6 +193,7 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
 
     // if bitset_holder is all 1's, we got empty result
     if (bitset_holder->all()) {
+        LOG_INFO("expr cost: {} us, scalar cost: {} us", scalar_cost1, scalar_cost);
         search_result_opt_ =
             empty_search_result(num_queries, node.search_info_);
         return;
@@ -227,7 +233,7 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
             .count();
     monitor::internal_core_search_latency_vector.Observe(vector_cost);
 
-    LOG_INFO("expr cost: {} us, vector cost: {} us", scalar_cost, vector_cost);
+    LOG_INFO("expr cost: {} us, scalar_cost: {} us, vector cost: {} us", scalar_cost1, scalar_cost, vector_cost);
 
     double total_cost =
         std::chrono::duration<double, std::micro>(vector_end - scalar_start)

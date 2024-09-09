@@ -18,7 +18,7 @@
 
 #include <cassert>
 #include <memory>
-
+#include <chrono>
 #include "exec/operator/CallbackSink.h"
 #include "exec/operator/FilterBits.h"
 #include "exec/operator/Operator.h"
@@ -134,7 +134,16 @@ Driver::Next(std::shared_ptr<BlockingState>& blocking_state) {
     auto self = shared_from_this();
 
     RowVectorPtr result;
+    std::chrono::high_resolution_clock::time_point scalar_start  =
+        std::chrono::high_resolution_clock::now();
     auto stop = RunInternal(self, blocking_state, result);
+
+    std::chrono::high_resolution_clock::time_point scalar_end1 =
+        std::chrono::high_resolution_clock::now();
+    double scalar_cost1 =
+        std::chrono::duration<double, std::micro>(scalar_end1 - scalar_start)
+            .count();
+    LOG_INFO("driver cost: {} us", scalar_cost1);
 
     Assert(stop == StopReason::kBlock || stop == StopReason::kAtEnd ||
            stop == StopReason::kAlreadyTerminated);
