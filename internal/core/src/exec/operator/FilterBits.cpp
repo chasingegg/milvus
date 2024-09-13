@@ -15,6 +15,7 @@
 // limitations under the License.
 
 #include "FilterBits.h"
+#include <chrono>
 
 namespace milvus {
 namespace exec {
@@ -63,8 +64,17 @@ FilterBits::GetOutput() {
 
     EvalCtx eval_ctx(
         operator_context_->get_exec_context(), exprs_.get(), input_.get());
+    std::chrono::high_resolution_clock::time_point scalar_start  =
+        std::chrono::high_resolution_clock::now();
 
     exprs_->Eval(0, 1, true, eval_ctx, results_);
+
+    std::chrono::high_resolution_clock::time_point scalar_end1 =
+        std::chrono::high_resolution_clock::now();
+    double scalar_cost1 =
+        std::chrono::duration<double, std::micro>(scalar_end1 - scalar_start)
+            .count();
+    LOG_INFO("filter cost: {} us", scalar_cost1);
 
     AssertInfo(results_.size() == 1 && results_[0] != nullptr,
                "FilterBits result size should be one and not be nullptr");
