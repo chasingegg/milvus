@@ -214,6 +214,7 @@ type commonConfig struct {
 	MiddlePriorityThreadCoreCoefficient ParamItem `refreshable:"false"`
 	LowPriorityThreadCoreCoefficient    ParamItem `refreshable:"false"`
 	EnableMaterializedView              ParamItem `refreshable:"false"`
+	FilterExecutionAlgo                 ParamItem `refreshable:"true"`
 	BuildIndexThreadPoolRatio           ParamItem `refreshable:"false"`
 	MaxDegree                           ParamItem `refreshable:"true"`
 	SearchListSize                      ParamItem `refreshable:"true"`
@@ -504,6 +505,13 @@ This configuration is only used by querynode and indexnode, it selects CPU instr
 		DefaultValue: "false",
 	}
 	p.EnableMaterializedView.Init(base.mgr)
+
+	p.FilterExecutionAlgo = ParamItem{
+		Key:          "common.filterExecutionAlgo",
+		Version:      "2.5.0",
+		DefaultValue: "pre",
+	}
+	p.FilterExecutionAlgo.Init(base.mgr)
 
 	p.MaxDegree = ParamItem{
 		Key:          "common.DiskIndex.MaxDegree",

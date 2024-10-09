@@ -149,7 +149,7 @@ SearchOnGrowing(const segcore::SegmentGrowingImpl& segment,
                 final_qr.merge(sub_qr);
             }
         }
-        if (info.group_by_field_id_.has_value()) {
+        if (info.group_by_field_id_.has_value() || info.post_filter_execution) {
             search_result.AssembleChunkVectorIterators(
                 num_queries,
                 max_chunk,

@@ -47,7 +47,7 @@
 namespace milvus {
 
 constexpr size_t DEFAULT_PK_VRCOL_BLOCK_SIZE = 1;
-constexpr size_t DEFAULT_MEM_VRCOL_BLOCK_SIZE = 32;
+constexpr size_t DEFAULT_MEM_VRCOL_BLOCK_SIZE = 1;
 constexpr size_t DEFAULT_MMAP_VRCOL_BLOCK_SIZE = 256;
 
 /**
@@ -321,6 +321,12 @@ class SingleChunkColumnBase : public ColumnBase {
     StringViews() const {
         PanicInfo(ErrorCode::Unsupported,
                   "StringViews only supported for VariableColumn");
+    }
+
+    virtual std::pair<std::vector<std::string_view>, FixedVector<bool>>
+    ViewsByOffsets(const FixedVector<int64_t>& offsets) const {
+        PanicInfo(ErrorCode::Unsupported,
+                  "viewsbyoffsets only supported for VariableColumn");
     }
 
     virtual void
@@ -691,6 +697,19 @@ class SingleChunkVariableColumn : public SingleChunkColumnBase {
             pos += size;
         }
         return std::make_pair(res, valid_data_);
+    }
+
+    std::pair<std::vector<std::string_view>, FixedVector<bool>>
+    ViewsByOffsets(const FixedVector<int64_t>& offsets) const {
+        std::vector<std::string_view> res;
+        FixedVector<bool> valid;
+        res.reserve(offsets.size());
+        valid.reserve(offsets.size());
+        for (size_t i = 0; i < offsets.size(); ++i) {
+            res.emplace_back(RawAt(offsets[i]));
+            valid.emplace_back(valid_data_[offsets[i]]);
+        }
+        return {res, valid};
     }
 
     [[nodiscard]] std::vector<ViewType>

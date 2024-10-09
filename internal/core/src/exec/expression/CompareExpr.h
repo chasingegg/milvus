@@ -44,36 +44,44 @@ using number = std::optional<number_type>;
 using ChunkDataAccessor = std::function<const number(int)>;
 using MultipleChunkDataAccessor = std::function<const number()>;
 
-template <typename T, typename U, proto::plan::OpType op>
+template <typename T,
+          typename U,
+          proto::plan::OpType op,
+          FilterType filter_type>
 struct CompareElementFunc {
     void
     operator()(const T* left,
                const U* right,
                size_t size,
-               TargetBitmapView res) {
-        /*
+               TargetBitmapView res,
+               const int64_t* offsets = nullptr) {
         // This is the original code, kept here for the documentation purposes
-        for (int i = 0; i < size; ++i) {
-            if constexpr (op == proto::plan::OpType::Equal) {
-                res[i] = left[i] == right[i];
-            } else if constexpr (op == proto::plan::OpType::NotEqual) {
-                res[i] = left[i] != right[i];
-            } else if constexpr (op == proto::plan::OpType::GreaterThan) {
-                res[i] = left[i] > right[i];
-            } else if constexpr (op == proto::plan::OpType::LessThan) {
-                res[i] = left[i] < right[i];
-            } else if constexpr (op == proto::plan::OpType::GreaterEqual) {
-                res[i] = left[i] >= right[i];
-            } else if constexpr (op == proto::plan::OpType::LessEqual) {
-                res[i] = left[i] <= right[i];
-            } else {
-                PanicInfo(
-                    OpTypeInvalid,
-                    fmt::format("unsupported op_type:{} for CompareElementFunc",
-                                op));
+        // also, used for post filter
+        if constexpr (filter_type == FilterType::post) {
+            for (int i = 0; i < size; ++i) {
+                auto offset = (offsets != nullptr) ? offsets[i] : i;
+                if constexpr (op == proto::plan::OpType::Equal) {
+                    res[i] = left[offset] == right[offset];
+                } else if constexpr (op == proto::plan::OpType::NotEqual) {
+                    res[i] = left[offset] != right[offset];
+                } else if constexpr (op == proto::plan::OpType::GreaterThan) {
+                    res[i] = left[offset] > right[offset];
+                } else if constexpr (op == proto::plan::OpType::LessThan) {
+                    res[i] = left[offset] < right[offset];
+                } else if constexpr (op == proto::plan::OpType::GreaterEqual) {
+                    res[i] = left[offset] >= right[offset];
+                } else if constexpr (op == proto::plan::OpType::LessEqual) {
+                    res[i] = left[offset] <= right[offset];
+                } else {
+                    PanicInfo(
+                        OpTypeInvalid,
+                        fmt::format(
+                            "unsupported op_type:{} for CompareElementFunc",
+                            op));
+                }
             }
+            return;
         }
-        */
 
         if constexpr (op == proto::plan::OpType::Equal) {
             res.inplace_compare_column<T, U, milvus::bitset::CompareOpType::EQ>(
@@ -151,10 +159,12 @@ class PhyCompareFilterExpr : public Expr {
 
     void
     MoveCursor() override {
-        if (segment_->is_chunked()) {
-            MoveCursorForMultipleChunk();
-        } else {
-            MoveCursorForSingleChunk();
+        if (!has_input_) {
+            if (segment_->is_chunked()) {
+                MoveCursorForMultipleChunk();
+            } else {
+                MoveCursorForSingleChunk();
+            }
         }
     }
 
@@ -269,6 +279,7 @@ class PhyCompareFilterExpr : public Expr {
     template <typename T, typename U, typename FUNC, typename... ValTypes>
     int64_t
     ProcessBothDataChunks(FUNC func,
+                          OffsetVector* input,
                           TargetBitmapView res,
                           TargetBitmapView valid_res,
                           ValTypes... values) {
@@ -281,6 +292,75 @@ class PhyCompareFilterExpr : public Expr {
         } else {
             return ProcessBothDataChunksForSingleChunk<T, U, FUNC, ValTypes...>(
                 func, res, valid_res, values...);
+        }
+    }
+
+    template <typename T, typename U, typename FUNC, typename... ValTypes>
+    int64_t
+    ProcessBothDataByOffsets(FUNC func,
+                             OffsetVector* input,
+                             TargetBitmapView res,
+                             TargetBitmapView valid_res,
+                             ValTypes... values) {
+        int64_t size = input->size();
+        int64_t processed_size = 0;
+        if (segment_->is_chunked()) {
+            for (auto i = 0; i < size; ++i) {
+                auto offset = (*input)[i];
+                auto [left_chunk_id, left_chunk_offset] =
+                    segment_->get_chunk_by_offset(left_field_, offset);
+                auto left_chunk =
+                    segment_->chunk_data<T>(left_field_, left_chunk_id);
+                auto [right_chunk_id, right_chunk_offset] =
+                    segment_->get_chunk_by_offset(right_field_, offset);
+                auto right_chunk =
+                    segment_->chunk_data<U>(right_field_, right_chunk_id);
+                const T* left_data = left_chunk.data() + left_chunk_offset;
+                const U* right_data = right_chunk.data() + right_chunk_offset;
+                func.template operator()<FilterType::post>(left_data,
+                                                           right_data,
+                                                           nullptr,
+                                                           1,
+                                                           res + processed_size,
+                                                           values...);
+                const bool* left_valid_data = left_chunk.valid_data();
+                const bool* right_valid_data = right_chunk.valid_data();
+                // mask with valid_data
+                if (left_valid_data && !left_valid_data[left_chunk_offset]) {
+                    res[processed_size] = false;
+                    valid_res[processed_size] = false;
+                    continue;
+                }
+                if (right_valid_data && !right_valid_data[right_chunk_offset]) {
+                    res[processed_size] = false;
+                    valid_res[processed_size] = false;
+                }
+                processed_size++;
+            }
+            return processed_size;
+        } else {
+            auto left_chunk = segment_->chunk_data<T>(left_field_, 0);
+            auto right_chunk = segment_->chunk_data<U>(right_field_, 0);
+            const T* left_data = left_chunk.data();
+            const U* right_data = right_chunk.data();
+            func.template operator()<FilterType::post>(
+                left_data, right_data, input->data(), size, res, values...);
+            const bool* left_valid_data = left_chunk.valid_data();
+            const bool* right_valid_data = right_chunk.valid_data();
+            // mask with valid_data
+            for (int i = 0; i < size; ++i) {
+                if (left_valid_data && !left_valid_data[(*input)[i]]) {
+                    res[i] = false;
+                    valid_res[i] = false;
+                    continue;
+                }
+                if (right_valid_data && !right_valid_data[(*input)[i]]) {
+                    res[i] = false;
+                    valid_res[i] = false;
+                }
+            }
+            processed_size += size;
+            return processed_size;
         }
     }
 
@@ -311,7 +391,12 @@ class PhyCompareFilterExpr : public Expr {
 
             const T* left_data = left_chunk.data() + data_pos;
             const U* right_data = right_chunk.data() + data_pos;
-            func(left_data, right_data, size, res + processed_size, values...);
+            func(left_data,
+                 right_data,
+                 nullptr,
+                 size,
+                 res + processed_size,
+                 values...);
             const bool* left_valid_data = left_chunk.valid_data();
             const bool* right_valid_data = right_chunk.valid_data();
             // mask with valid_data
@@ -369,7 +454,12 @@ class PhyCompareFilterExpr : public Expr {
 
             const T* left_data = left_chunk.data() + data_pos;
             const U* right_data = right_chunk.data() + data_pos;
-            func(left_data, right_data, size, res + processed_size, values...);
+            func(left_data,
+                 right_data,
+                 nullptr,
+                 size,
+                 res + processed_size,
+                 values...);
             const bool* left_valid_data = left_chunk.valid_data();
             const bool* right_valid_data = right_chunk.valid_data();
             // mask with valid_data
@@ -411,21 +501,21 @@ class PhyCompareFilterExpr : public Expr {
 
     template <typename OpType>
     VectorPtr
-    ExecCompareExprDispatcher(OpType op);
+    ExecCompareExprDispatcher(OpType op, OffsetVector* input = nullptr);
 
     VectorPtr
-    ExecCompareExprDispatcherForHybridSegment();
+    ExecCompareExprDispatcherForHybridSegment(OffsetVector* input = nullptr);
 
     VectorPtr
-    ExecCompareExprDispatcherForBothDataSegment();
+    ExecCompareExprDispatcherForBothDataSegment(OffsetVector* input = nullptr);
 
     template <typename T>
     VectorPtr
-    ExecCompareLeftType();
+    ExecCompareLeftType(OffsetVector* input = nullptr);
 
     template <typename T, typename U>
     VectorPtr
-    ExecCompareRightType();
+    ExecCompareRightType(OffsetVector* input = nullptr);
 
  private:
     const FieldId left_field_;

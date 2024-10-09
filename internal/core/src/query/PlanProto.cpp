@@ -51,6 +51,10 @@ ProtoParser::PlanNodeFromProto(const planpb::PlanNode& plan_node_proto) {
             nlohmann::json::parse(query_info_proto.search_params());
         search_info.materialized_view_involved =
             query_info_proto.materialized_view_involved();
+        if (search_info.search_params_.contains("post_filter")) {
+            search_info.post_filter_execution =
+                search_info.search_params_["post_filter"];
+        }
 
         if (query_info_proto.bm25_avgdl() > 0) {
             search_info.search_params_[knowhere::meta::BM25_AVGDL] =
@@ -93,33 +97,59 @@ ProtoParser::PlanNodeFromProto(const planpb::PlanNode& plan_node_proto) {
     milvus::plan::PlanNodePtr plannode;
     std::vector<milvus::plan::PlanNodePtr> sources;
     if (anns_proto.has_predicates()) {
-        plannode = std::move(expr_parser());
-        if (plan_node->search_info_.materialized_view_involved) {
-            const auto expr_info = plannode->GatherInfo();
-            knowhere::MaterializedViewSearchInfo materialized_view_search_info;
-            for (const auto& [expr_field_id, vals] :
-                 expr_info.field_id_to_values) {
-                materialized_view_search_info
-                    .field_id_to_touched_categories_cnt[expr_field_id] =
-                    vals.size();
-            }
-            materialized_view_search_info.is_pure_and = expr_info.is_pure_and;
-            materialized_view_search_info.has_not = expr_info.has_not;
+        if (plan_node->search_info_.post_filter_execution) {
+            LOG_INFO("execute post filter");
+            plannode = std::make_shared<milvus::plan::MvccNode>(
+                milvus::plan::GetNextPlanNodeId());
+            sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
+            plannode = std::make_shared<milvus::plan::VectorSearchNode>(
+                milvus::plan::GetNextPlanNodeId(), sources);
+            sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
 
-            plan_node->search_info_
-                .search_params_[knowhere::meta::MATERIALIZED_VIEW_SEARCH_INFO] =
-                materialized_view_search_info;
+            // add filter nodes after vector search node
+            auto expr = ParseExprs(anns_proto.predicates());
+            plannode = std::make_shared<plan::FilterNode>(
+                milvus::plan::GetNextPlanNodeId(), expr, sources);
+            sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
+        } else {
+            plannode = std::move(expr_parser());
+            if (plan_node->search_info_.materialized_view_involved) {
+                const auto expr_info = plannode->GatherInfo();
+                knowhere::MaterializedViewSearchInfo
+                    materialized_view_search_info;
+                for (const auto& [expr_field_id, vals] :
+                     expr_info.field_id_to_values) {
+                    materialized_view_search_info
+                        .field_id_to_touched_categories_cnt[expr_field_id] =
+                        vals.size();
+                }
+                materialized_view_search_info.is_pure_and =
+                    expr_info.is_pure_and;
+                materialized_view_search_info.has_not = expr_info.has_not;
+
+                plan_node->search_info_.search_params_
+                    [knowhere::meta::MATERIALIZED_VIEW_SEARCH_INFO] =
+                    materialized_view_search_info;
+            }
+            sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
+            plannode = std::make_shared<milvus::plan::MvccNode>(
+                milvus::plan::GetNextPlanNodeId(), sources);
+            sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
+
+            plannode = std::make_shared<milvus::plan::VectorSearchNode>(
+                milvus::plan::GetNextPlanNodeId(), sources);
+            sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
         }
+
+    } else {
+        plannode = std::make_shared<milvus::plan::MvccNode>(
+            milvus::plan::GetNextPlanNodeId(), sources);
+        sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
+
+        plannode = std::make_shared<milvus::plan::VectorSearchNode>(
+            milvus::plan::GetNextPlanNodeId(), sources);
         sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
     }
-
-    plannode = std::make_shared<milvus::plan::MvccNode>(
-        milvus::plan::GetNextPlanNodeId(), sources);
-    sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
-
-    plannode = std::make_shared<milvus::plan::VectorSearchNode>(
-        milvus::plan::GetNextPlanNodeId(), sources);
-    sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
 
     if (plan_node->search_info_.group_by_field_id_ != std::nullopt) {
         plannode = std::make_shared<milvus::plan::GroupByNode>(

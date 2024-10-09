@@ -236,7 +236,64 @@ PhyCompareFilterExpr::GetChunkData(DataType data_type,
 
 template <typename OpType>
 VectorPtr
-PhyCompareFilterExpr::ExecCompareExprDispatcher(OpType op) {
+PhyCompareFilterExpr::ExecCompareExprDispatcher(OpType op,
+                                                OffsetVector* input) {
+    // take offsets as input
+    if (has_input_) {
+        auto real_batch_size = input->size();
+        if (real_batch_size == 0) {
+            return nullptr;
+        }
+
+        auto res_vec = std::make_shared<ColumnVector>(
+            TargetBitmap(real_batch_size), TargetBitmap(real_batch_size));
+        TargetBitmapView res(res_vec->GetRawData(), real_batch_size);
+        TargetBitmapView valid_res(res_vec->GetValidRawData(), real_batch_size);
+        valid_res.set();
+
+        auto left_data_barrier =
+            segment_->num_chunk_data(expr_->left_field_id_);
+        auto right_data_barrier =
+            segment_->num_chunk_data(expr_->right_field_id_);
+
+        int64_t processed_rows = 0;
+        for (auto i = 0; i < real_batch_size; ++i) {
+            auto offset = (*input)[i];
+            auto [chunk_id,
+                  chunk_offset] = [&]() -> std::pair<int64_t, int64_t> {
+                if (segment_->type() == SegmentType::Growing) {
+                    return {offset / size_per_chunk_, offset % size_per_chunk_};
+                } else if (segment_->is_chunked()) {
+                    return segment_->get_chunk_by_offset(left_field_, offset);
+                } else {
+                    return {0, offset};
+                }
+            }();
+            auto left = GetChunkData(expr_->left_data_type_,
+                                     expr_->left_field_id_,
+                                     chunk_id,
+                                     left_data_barrier);
+            auto right = GetChunkData(expr_->right_data_type_,
+                                      expr_->right_field_id_,
+                                      chunk_id,
+                                      right_data_barrier);
+            auto left_opt = left(chunk_offset);
+            auto right_opt = right(chunk_offset);
+            if (!left_opt.has_value() || !right_opt.has_value()) {
+                res[processed_rows] = false;
+                valid_res[processed_rows] = false;
+            } else {
+                res[processed_rows] = boost::apply_visitor(
+                    milvus::query::Relational<decltype(op)>{},
+                    left_opt.value(),
+                    right_opt.value());
+            }
+            processed_rows++;
+        }
+        return res_vec;
+    }
+
+    // normal path
     if (segment_->is_chunked()) {
         auto real_batch_size = GetNextBatchSize();
         if (real_batch_size == 0) {
@@ -432,39 +489,42 @@ PhyCompareFilterExpr::GetChunkData(DataType data_type,
 
 void
 PhyCompareFilterExpr::Eval(EvalCtx& context, VectorPtr& result) {
+    auto input = context.get_input();
+    SetHasInput((input != nullptr));
     // For segment both fields has no index, can use SIMD to speed up.
     // Avoiding too much call stack that blocks SIMD.
     if (!is_left_indexed_ && !is_right_indexed_ && !IsStringExpr()) {
-        result = ExecCompareExprDispatcherForBothDataSegment();
+        result = ExecCompareExprDispatcherForBothDataSegment(input);
         return;
     }
-    result = ExecCompareExprDispatcherForHybridSegment();
+    result = ExecCompareExprDispatcherForHybridSegment(input);
 }
 
 VectorPtr
-PhyCompareFilterExpr::ExecCompareExprDispatcherForHybridSegment() {
+PhyCompareFilterExpr::ExecCompareExprDispatcherForHybridSegment(
+    OffsetVector* input) {
     switch (expr_->op_type_) {
         case OpType::Equal: {
-            return ExecCompareExprDispatcher(std::equal_to<>{});
+            return ExecCompareExprDispatcher(std::equal_to<>{}, input);
         }
         case OpType::NotEqual: {
-            return ExecCompareExprDispatcher(std::not_equal_to<>{});
+            return ExecCompareExprDispatcher(std::not_equal_to<>{}, input);
         }
         case OpType::GreaterEqual: {
-            return ExecCompareExprDispatcher(std::greater_equal<>{});
+            return ExecCompareExprDispatcher(std::greater_equal<>{}, input);
         }
         case OpType::GreaterThan: {
-            return ExecCompareExprDispatcher(std::greater<>{});
+            return ExecCompareExprDispatcher(std::greater<>{}, input);
         }
         case OpType::LessEqual: {
-            return ExecCompareExprDispatcher(std::less_equal<>{});
+            return ExecCompareExprDispatcher(std::less_equal<>{}, input);
         }
         case OpType::LessThan: {
-            return ExecCompareExprDispatcher(std::less<>{});
+            return ExecCompareExprDispatcher(std::less<>{}, input);
         }
         case OpType::PrefixMatch: {
             return ExecCompareExprDispatcher(
-                milvus::query::MatchOp<OpType::PrefixMatch>{});
+                milvus::query::MatchOp<OpType::PrefixMatch>{}, input);
         }
             // case OpType::PostfixMatch: {
             // }
@@ -475,22 +535,23 @@ PhyCompareFilterExpr::ExecCompareExprDispatcherForHybridSegment() {
 }
 
 VectorPtr
-PhyCompareFilterExpr::ExecCompareExprDispatcherForBothDataSegment() {
+PhyCompareFilterExpr::ExecCompareExprDispatcherForBothDataSegment(
+    OffsetVector* input) {
     switch (expr_->left_data_type_) {
         case DataType::BOOL:
-            return ExecCompareLeftType<bool>();
+            return ExecCompareLeftType<bool>(input);
         case DataType::INT8:
-            return ExecCompareLeftType<int8_t>();
+            return ExecCompareLeftType<int8_t>(input);
         case DataType::INT16:
-            return ExecCompareLeftType<int16_t>();
+            return ExecCompareLeftType<int16_t>(input);
         case DataType::INT32:
-            return ExecCompareLeftType<int32_t>();
+            return ExecCompareLeftType<int32_t>(input);
         case DataType::INT64:
-            return ExecCompareLeftType<int64_t>();
+            return ExecCompareLeftType<int64_t>(input);
         case DataType::FLOAT:
-            return ExecCompareLeftType<float>();
+            return ExecCompareLeftType<float>(input);
         case DataType::DOUBLE:
-            return ExecCompareLeftType<double>();
+            return ExecCompareLeftType<double>(input);
         default:
             PanicInfo(
                 DataTypeInvalid,
@@ -501,22 +562,22 @@ PhyCompareFilterExpr::ExecCompareExprDispatcherForBothDataSegment() {
 
 template <typename T>
 VectorPtr
-PhyCompareFilterExpr::ExecCompareLeftType() {
+PhyCompareFilterExpr::ExecCompareLeftType(OffsetVector* input) {
     switch (expr_->right_data_type_) {
         case DataType::BOOL:
-            return ExecCompareRightType<T, bool>();
+            return ExecCompareRightType<T, bool>(input);
         case DataType::INT8:
-            return ExecCompareRightType<T, int8_t>();
+            return ExecCompareRightType<T, int8_t>(input);
         case DataType::INT16:
-            return ExecCompareRightType<T, int16_t>();
+            return ExecCompareRightType<T, int16_t>(input);
         case DataType::INT32:
-            return ExecCompareRightType<T, int32_t>();
+            return ExecCompareRightType<T, int32_t>(input);
         case DataType::INT64:
-            return ExecCompareRightType<T, int64_t>();
+            return ExecCompareRightType<T, int64_t>(input);
         case DataType::FLOAT:
-            return ExecCompareRightType<T, float>();
+            return ExecCompareRightType<T, float>(input);
         case DataType::DOUBLE:
-            return ExecCompareRightType<T, double>();
+            return ExecCompareRightType<T, double>(input);
         default:
             PanicInfo(
                 DataTypeInvalid,
@@ -527,8 +588,8 @@ PhyCompareFilterExpr::ExecCompareLeftType() {
 
 template <typename T, typename U>
 VectorPtr
-PhyCompareFilterExpr::ExecCompareRightType() {
-    auto real_batch_size = GetNextBatchSize();
+PhyCompareFilterExpr::ExecCompareRightType(OffsetVector* input) {
+    auto real_batch_size = has_input_ ? input->size() : GetNextBatchSize();
     if (real_batch_size == 0) {
         return nullptr;
     }
@@ -540,39 +601,47 @@ PhyCompareFilterExpr::ExecCompareRightType() {
     valid_res.set();
 
     auto expr_type = expr_->op_type_;
-    auto execute_sub_batch = [expr_type](const T* left,
-                                         const U* right,
-                                         const int size,
-                                         TargetBitmapView res) {
+    auto execute_sub_batch =
+        [ expr_type, this ]<FilterType filter_type = FilterType::pre>(
+            const T* left,
+            const U* right,
+            const int64_t* offsets,
+            const int size,
+            TargetBitmapView res) {
         switch (expr_type) {
             case proto::plan::GreaterThan: {
-                CompareElementFunc<T, U, proto::plan::GreaterThan> func;
-                func(left, right, size, res);
+                CompareElementFunc<T, U, proto::plan::GreaterThan, filter_type>
+                    func;
+                func(left, right, size, res, offsets);
                 break;
             }
             case proto::plan::GreaterEqual: {
-                CompareElementFunc<T, U, proto::plan::GreaterEqual> func;
-                func(left, right, size, res);
+                CompareElementFunc<T, U, proto::plan::GreaterEqual, filter_type>
+                    func;
+                func(left, right, size, res, offsets);
                 break;
             }
             case proto::plan::LessThan: {
-                CompareElementFunc<T, U, proto::plan::LessThan> func;
-                func(left, right, size, res);
+                CompareElementFunc<T, U, proto::plan::LessThan, filter_type>
+                    func;
+                func(left, right, size, res, offsets);
                 break;
             }
             case proto::plan::LessEqual: {
-                CompareElementFunc<T, U, proto::plan::LessEqual> func;
-                func(left, right, size, res);
+                CompareElementFunc<T, U, proto::plan::LessEqual, filter_type>
+                    func;
+                func(left, right, size, res, offsets);
                 break;
             }
             case proto::plan::Equal: {
-                CompareElementFunc<T, U, proto::plan::Equal> func;
-                func(left, right, size, res);
+                CompareElementFunc<T, U, proto::plan::Equal, filter_type> func;
+                func(left, right, size, res, offsets);
                 break;
             }
             case proto::plan::NotEqual: {
-                CompareElementFunc<T, U, proto::plan::NotEqual> func;
-                func(left, right, size, res);
+                CompareElementFunc<T, U, proto::plan::NotEqual, filter_type>
+                    func;
+                func(left, right, size, res, offsets);
                 break;
             }
             default:
@@ -582,8 +651,14 @@ PhyCompareFilterExpr::ExecCompareRightType() {
                                       expr_type));
         }
     };
-    int64_t processed_size =
-        ProcessBothDataChunks<T, U>(execute_sub_batch, res, valid_res);
+    int64_t processed_size;
+    if (has_input_) {
+        processed_size = ProcessBothDataByOffsets<T, U>(
+            execute_sub_batch, input, res, valid_res);
+    } else {
+        processed_size = ProcessBothDataChunks<T, U>(
+            execute_sub_batch, input, res, valid_res);
+    }
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",

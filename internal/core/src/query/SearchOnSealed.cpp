@@ -21,7 +21,7 @@
 #include "query/SearchBruteForce.h"
 #include "query/SearchOnSealed.h"
 #include "query/helper.h"
-#include "exec/operator/groupby/SearchGroupByOperator.h"
+#include "exec/operator/Utils.h"
 
 namespace milvus::query {
 
@@ -155,7 +155,8 @@ SearchOnSealed(const Schema& schema,
             delete[] bitset_ptr;
         }
     }
-    if (search_info.group_by_field_id_.has_value()) {
+    if (search_info.group_by_field_id_.has_value() ||
+        search_info.post_filter_execution) {
         result.AssembleChunkVectorIterators(
             num_queries, 1, -1, final_qr.chunk_iterators());
     } else {
@@ -192,7 +193,8 @@ SearchOnSealed(const Schema& schema,
 
     auto data_type = field.get_data_type();
     CheckBruteForceSearchParam(field, search_info);
-    if (search_info.group_by_field_id_.has_value()) {
+    if (search_info.group_by_field_id_.has_value() ||
+        search_info.post_filter_execution) {
         auto sub_qr = BruteForceSearchIterators(
             dataset, vec_data, row_count, search_info, bitset, data_type);
         result.AssembleChunkVectorIterators(
