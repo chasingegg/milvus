@@ -463,7 +463,8 @@ PhyTermFilterExpr::ExecVisitorImpl() {
     if (is_index_mode_) {
         return ExecVisitorImplForIndex<T>();
     } else {
-        return ExecVisitorImplForData<T>();
+        std::vector<int64_t> offsets;
+        return ExecVisitorImplForDataV2<T>(offsets);
     }
 }
 
@@ -563,6 +564,70 @@ PhyTermFilterExpr::ExecVisitorImplForData() {
                processed_size,
                real_batch_size);
     return res_vec;
+}
+
+template <typename T, typename... Args>
+VectorPtr
+PhyTermFilterExpr::ExecVisitorImplForDataV2(const Args&... offsets) {
+    auto real_batch_size = GetNextBatchSize();
+    if (real_batch_size == 0) {
+        return nullptr;
+    }
+
+    std::vector<T> vals;
+    for (auto& val : expr_->vals_) {
+        // Integral overflow process
+        bool overflowed = false;
+        auto converted_val = GetValueFromProtoWithOverflow<T>(val, overflowed);
+        if (!overflowed) {
+            vals.emplace_back(converted_val);
+        }
+    }
+    std::unordered_set<T> vals_set(vals.begin(), vals.end());
+
+    if constexpr (sizeof...(offsets) == 0) {
+        auto res_vec =
+            std::make_shared<ColumnVector>(TargetBitmap(real_batch_size));
+        TargetBitmapView res(res_vec->GetRawData(), real_batch_size);
+        auto execute_sub_batch = [](const T* data,
+                                    const int size,
+                                    TargetBitmapView res,
+                                    const std::unordered_set<T>& vals) {
+            TermElementFuncSet<T> func;
+            for (size_t i = 0; i < size; ++i) {
+                res[i] = func(vals, data[i]);
+            }
+        };
+        int64_t processed_size = ProcessDataChunks<T>(
+            execute_sub_batch, std::nullptr_t{}, res, vals_set);
+        AssertInfo(processed_size == real_batch_size,
+                   "internal error: expr processed rows {} not equal "
+                   "expect batch size {}",
+                   processed_size,
+                   real_batch_size);
+        return res_vec;
+    } else {
+        auto res_vec =
+            std::make_shared<ColumnVector>(TargetBitmap(real_batch_size));
+        TargetBitmapView res(res_vec->GetRawData(), real_batch_size);
+        auto execute_sub_batch = [](const T* data,
+                                    const int size,
+                                    TargetBitmapView res,
+                                    const std::unordered_set<T>& vals) {
+            TermElementFuncSet<T> func;
+            for (size_t i = 0; i < size; ++i) {
+                res[i] = func(vals, data[i]);
+            }
+        };
+        int64_t processed_size = ProcessDataByOffsets<T>(
+            execute_sub_batch, std::nullptr_t{}, offsets..., res, vals_set);
+        AssertInfo(processed_size == real_batch_size,
+                   "internal error: expr processed rows {} not equal "
+                   "expect batch size {}",
+                   processed_size,
+                   real_batch_size);
+        return res_vec;
+    }
 }
 
 }  //namespace exec

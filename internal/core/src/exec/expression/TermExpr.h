@@ -93,6 +93,10 @@ class PhyTermFilterExpr : public SegmentExpr {
     VectorPtr
     ExecVisitorImplForData();
 
+    template <typename T, typename... Args>
+    VectorPtr
+    ExecVisitorImplForDataV2(const Args&... offsets);
+
     template <typename ValueType>
     VectorPtr
     ExecVisitorImplTemplateJson();

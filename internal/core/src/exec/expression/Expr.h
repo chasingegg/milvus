@@ -220,6 +220,21 @@ class SegmentExpr : public Expr {
 
     template <typename T, typename FUNC, typename... ValTypes>
     int64_t
+    ProcessDataByOffsets(
+        FUNC func,
+        std::function<bool(const milvus::SkipIndex&, FieldId, int)> skip_func,
+        const std::vector<int64_t>& offsets,
+        TargetBitmapView res,
+        ValTypes... values) {
+        int64_t processed_size = 0;
+        auto chunk = segment_->chunk_data<T>(field_id_, 0);
+        const T* data = chunk.data();
+        func(data, 0, res + processed_size, values...);
+        return offsets.size();
+    }
+
+    template <typename T, typename FUNC, typename... ValTypes>
+    int64_t
     ProcessDataChunks(
         FUNC func,
         std::function<bool(const milvus::SkipIndex&, FieldId, int)> skip_func,
