@@ -57,6 +57,7 @@ PhyFilterBitsNode::IsFinished() {
 
 RowVectorPtr
 PhyFilterBitsNode::GetOutput() {
+    LOG_DEBUG("pre filter");
     if (AllInputProcessed()) {
         return nullptr;
     }
@@ -65,7 +66,7 @@ PhyFilterBitsNode::GetOutput() {
         std::chrono::high_resolution_clock::now();
 
     EvalCtx eval_ctx(
-        operator_context_->get_exec_context(), exprs_.get(), input_.get());
+        operator_context_->get_exec_context(), exprs_.get(), nullptr);
 
     TargetBitmap bitset;
     while (num_processed_rows_ < need_process_rows_) {

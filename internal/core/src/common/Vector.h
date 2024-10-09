@@ -75,6 +75,11 @@ class ColumnVector final : public BaseVector {
     //            std::make_shared<FieldData<bool>>(DataType::BOOL, std::move(data));
     //    }
 
+    ColumnVector(FixedVector<int64_t>&& data)
+        : BaseVector(DataType::INT64, data.size()) {
+        offsets_ = std::move(data);
+    }
+
     // the size is the number of bits
     ColumnVector(TargetBitmap&& bitmap)
         : BaseVector(DataType::INT8, bitmap.size()) {
@@ -91,6 +96,11 @@ class ColumnVector final : public BaseVector {
         return values_->Data();
     }
 
+    const int64_t*
+    GetOffsets() {
+        return offsets_.data();
+    }
+
     template <typename As>
     const As*
     RawAsValues() const {
@@ -99,6 +109,7 @@ class ColumnVector final : public BaseVector {
 
  private:
     FieldDataPtr values_;
+    FixedVector<int64_t> offsets_;
 };
 
 using ColumnVectorPtr = std::shared_ptr<ColumnVector>;
