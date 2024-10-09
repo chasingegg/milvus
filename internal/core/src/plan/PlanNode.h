@@ -177,7 +177,7 @@ class FilterNode : public PlanNode {
  public:
     FilterNode(const PlanNodeId& id,
                expr::TypedExprPtr filter,
-               std::vector<PlanNodePtr> sources)
+               std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{})
         : PlanNode(id),
           sources_{std::move(sources)},
           filter_(std::move(filter)) {

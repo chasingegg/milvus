@@ -21,7 +21,7 @@
 #include "query/SearchBruteForce.h"
 #include "query/SearchOnSealed.h"
 #include "query/helper.h"
-#include "exec/operator/groupby/SearchGroupByOperator.h"
+#include "exec/operator/Utils.h"
 
 namespace milvus::query {
 

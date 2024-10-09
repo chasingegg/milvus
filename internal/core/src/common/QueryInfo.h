@@ -35,6 +35,7 @@ struct SearchInfo {
     std::optional<FieldId> group_by_field_id_;
     tracer::TraceContext trace_ctx_;
     bool materialized_view_involved = false;
+    std::string filter_execution_algo = "";
 };
 
 using SearchInfoPtr = std::shared_ptr<SearchInfo>;

@@ -27,33 +27,34 @@ PhyTermFilterExpr::Eval(EvalCtx& context, VectorPtr& result) {
         result = ExecPkTermImpl();
         return;
     }
+    auto input = context.get_input();
     switch (expr_->column_.data_type_) {
         case DataType::BOOL: {
-            result = ExecVisitorImpl<bool>();
+            result = ExecVisitorImplV2<bool>(input);
             break;
         }
         case DataType::INT8: {
-            result = ExecVisitorImpl<int8_t>();
+            result = ExecVisitorImplV2<int8_t>(input);
             break;
         }
         case DataType::INT16: {
-            result = ExecVisitorImpl<int16_t>();
+            result = ExecVisitorImplV2<int16_t>(input);
             break;
         }
         case DataType::INT32: {
-            result = ExecVisitorImpl<int32_t>();
+            result = ExecVisitorImplV2<int32_t>(input);
             break;
         }
         case DataType::INT64: {
-            result = ExecVisitorImpl<int64_t>();
+            result = ExecVisitorImplV2<int64_t>(input);
             break;
         }
         case DataType::FLOAT: {
-            result = ExecVisitorImpl<float>();
+            result = ExecVisitorImplV2<float>(input);
             break;
         }
         case DataType::DOUBLE: {
-            result = ExecVisitorImpl<double>();
+            result = ExecVisitorImplV2<double>(input);
             break;
         }
         case DataType::VARCHAR: {
@@ -61,9 +62,9 @@ PhyTermFilterExpr::Eval(EvalCtx& context, VectorPtr& result) {
                 !storage::MmapManager::GetInstance()
                      .GetMmapConfig()
                      .growing_enable_mmap) {
-                result = ExecVisitorImpl<std::string>();
+                result = ExecVisitorImplV2<std::string>(input);
             } else {
-                result = ExecVisitorImpl<std::string_view>();
+                result = ExecVisitorImplV2<std::string_view>(input);
             }
             break;
         }
@@ -499,7 +500,18 @@ PhyTermFilterExpr::ExecVisitorImpl() {
     if (is_index_mode_) {
         return ExecVisitorImplForIndex<T>();
     } else {
-        return ExecVisitorImplForData<T>();
+        std::vector<int64_t> offsets;
+        return ExecVisitorImplForDataV2<T>(offsets);
+    }
+}
+
+template <typename T>
+VectorPtr
+PhyTermFilterExpr::ExecVisitorImplV2(ColumnVector* input) {
+    if (is_index_mode_) {
+        return ExecVisitorImplForIndex<T>();
+    } else {
+        return ExecVisitorImplForDataV2<T>(input);
     }
 }
 
@@ -607,6 +619,92 @@ PhyTermFilterExpr::ExecVisitorImplForData() {
                processed_size,
                real_batch_size);
     return res_vec;
+}
+
+template <typename T>
+VectorPtr
+PhyTermFilterExpr::ExecVisitorImplForDataV2(ColumnVector* input) {
+    std::vector<T> vals;
+    for (auto& val : expr_->vals_) {
+        // Integral overflow process
+        bool overflowed = false;
+        auto converted_val = GetValueFromProtoWithOverflow<T>(val, overflowed);
+        if (!overflowed) {
+            vals.emplace_back(converted_val);
+        }
+    }
+    std::unordered_set<T> vals_set(vals.begin(), vals.end());
+
+    // original filter
+    if (input == nullptr) {
+        auto real_batch_size = GetNextBatchSize();
+        if (real_batch_size == 0) {
+            return nullptr;
+        }
+        auto res_vec = std::make_shared<ColumnVector>(
+            TargetBitmap(real_batch_size), TargetBitmap(real_batch_size));
+        TargetBitmapView res(res_vec->GetRawData(), real_batch_size);
+        TargetBitmapView valid_res(res_vec->GetValidRawData(), real_batch_size);
+        valid_res.set();
+        auto execute_sub_batch = [](const T* data,
+                                    const bool* valid_data,
+                                    const int size,
+                                    TargetBitmapView res,
+                                    TargetBitmapView valid_res,
+                                    const std::unordered_set<T>& vals) {
+            TermElementFuncSet<T> func;
+            for (size_t i = 0; i < size; ++i) {
+                if (valid_data != nullptr && !valid_data[i]) {
+                    res[i] = valid_res[i] = false;
+                    continue;
+                }
+                res[i] = func(vals, data[i]);
+            }
+        };
+        int64_t processed_size = ProcessDataChunks<T>(
+            execute_sub_batch, std::nullptr_t{}, res, valid_res, vals_set);
+        AssertInfo(processed_size == real_batch_size,
+                   "internal error: expr processed rows {} not equal "
+                   "expect batch size {}",
+                   processed_size,
+                   real_batch_size);
+        return res_vec;
+    } else {  // filter on the offsets input
+        auto real_batch_size = input->size();
+        auto res_vec = std::make_shared<ColumnVector>(
+            TargetBitmap(real_batch_size), TargetBitmap(real_batch_size));
+        TargetBitmapView res(res_vec->GetRawData(), real_batch_size);
+        TargetBitmapView valid_res(res_vec->GetValidRawData(), real_batch_size);
+        auto execute_sub_batch = [](const T* data,
+                                    const bool* valid_data,
+                                    const int64_t* offsets,
+                                    size_t size,
+                                    TargetBitmapView res,
+                                    TargetBitmapView valid_res,
+                                    const std::unordered_set<T>& vals) {
+            TermElementFuncSet<T> func;
+            for (size_t i = 0; i < size; ++i) {
+                auto offset = offsets ? offsets[i] : i;
+                if (valid_data != nullptr && !valid_data[offset]) {
+                    res[i] = valid_res[i] = false;
+                    continue;
+                }
+                res[i] = func(vals, data[offset]);
+            }
+        };
+        int64_t processed_size = ProcessDataByOffsets<T>(execute_sub_batch,
+                                                         std::nullptr_t{},
+                                                         input,
+                                                         res,
+                                                         valid_res,
+                                                         vals_set);
+        AssertInfo(processed_size == real_batch_size,
+                   "internal error: expr processed rows {} not equal "
+                   "expect batch size {}",
+                   processed_size,
+                   real_batch_size);
+        return res_vec;
+    }
 }
 
 }  //namespace exec

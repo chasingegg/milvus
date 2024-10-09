@@ -31,6 +31,13 @@
 namespace milvus {
 namespace exec {
 
+enum class FilterType {
+    pre =
+        0,  // pre filter takes whole segment as input and perform scalar filtering at whole data
+    post =
+        1  // post filter takes offsets as input and perform scalar filtering at these offsets
+};
+
 class Expr {
  public:
     Expr(DataType type,
@@ -273,6 +280,100 @@ class SegmentExpr : public Expr {
         return need_size;
     }
 
+    // a copy-paste of ProcessChunkForSealedSeg for data offsets check
+    // need to discuss with zhanglu why it is needed???
+    // used for processing raw data expr for sealed segments.
+    // now only used for std::string_view && json
+    // TODO: support more types
+    template <typename T, typename FUNC, typename... ValTypes>
+    int64_t
+    ProcessDataByOffsetsForSealedSeg(
+        FUNC func,
+        std::function<bool(const milvus::SkipIndex&, FieldId, int)> skip_func,
+        ColumnVector* input,
+        TargetBitmapView res,
+        TargetBitmapView valid_res,
+        ValTypes... values) {
+        // For sealed segment, only single chunk
+        Assert(num_data_chunk_ == 1);
+
+        auto& skip_index = segment_->GetSkipIndex();
+        if (!skip_func || !skip_func(skip_index, field_id_, 0)) {
+            auto data_vec = segment_->get_views_by_offsets<T>(
+                field_id_, 0, input->GetOffsetsVector());
+            // auto data_vec = segment_->get_batch_views<T>(
+            //     field_id_, 0, 0, active_count_).first;
+            func(data_vec.data(),
+                 nullptr,
+                 nullptr,
+                 input->size(),
+                 res,
+                 valid_res,
+                 values...);
+            // func(data_vec.data(), input->GetOffsets(), input->size(), res, values...);
+        }
+        return input->size();
+    }
+
+    template <typename T, typename FUNC, typename... ValTypes>
+    int64_t
+    ProcessDataByOffsets(
+        FUNC func,
+        std::function<bool(const milvus::SkipIndex&, FieldId, int)> skip_func,
+        ColumnVector* input,
+        TargetBitmapView res,
+        TargetBitmapView valid_res,
+        ValTypes... values) {
+        int64_t processed_size = 0;
+
+        if constexpr (std::is_same_v<T, std::string_view> ||
+                      std::is_same_v<T, Json>) {
+            if (segment_->type() == SegmentType::Sealed) {
+                return ProcessDataByOffsetsForSealedSeg<T>(
+                    func, skip_func, input, res, valid_res, values...);
+            }
+        }
+        auto& skip_index = segment_->GetSkipIndex();
+
+        // sealed segment
+        if (segment_->type() == SegmentType::Sealed) {
+            if (!skip_func || !skip_func(skip_index, field_id_, 0)) {
+                auto chunk = segment_->chunk_data<T>(field_id_, 0);
+                const T* data = chunk.data();
+                const bool* valid_data = chunk.valid_data();
+                func(data,
+                     valid_data,
+                     input->GetOffsets(),
+                     input->size(),
+                     res,
+                     valid_res,
+                     values...);
+                return input->size();
+            }
+        } else {
+            // growing segment
+            for (size_t i = 0; i < input->size(); ++i) {
+                int64_t offset = input->GetOffsets()[i];
+                auto chunk_id = offset / size_per_chunk_;
+                auto chunk_offset = offset % size_per_chunk_;
+                if (!skip_func || !skip_func(skip_index, field_id_, chunk_id)) {
+                    auto chunk = segment_->chunk_data<T>(field_id_, chunk_id);
+                    const T* data = chunk.data() + chunk_offset;
+                    const bool* valid_data = chunk.valid_data();
+                    func(data,
+                         valid_data,
+                         nullptr,
+                         1,
+                         res + processed_size,
+                         valid_res + processed_size,
+                         values...);
+                    processed_size++;
+                }
+            }
+        }
+        return input->size();
+    }
+
     template <typename T, typename FUNC, typename... ValTypes>
     int64_t
     ProcessDataChunksForSingleChunk(
@@ -374,14 +475,9 @@ class SegmentExpr : public Expr {
                     if (segment_->type() == SegmentType::Sealed) {
                         // first is the raw data, second is valid_data
                         // use valid_data to see if raw data is null
-                        auto data_vec = segment_
-                                            ->get_batch_views<T>(
-                                                field_id_, i, data_pos, size)
-                                            .first;
-                        auto valid_data = segment_
-                                              ->get_batch_views<T>(
-                                                  field_id_, i, data_pos, size)
-                                              .second;
+                        auto [data_vec, valid_data] =
+                            segment_->get_batch_views<T>(
+                                field_id_, i, data_pos, size);
                         func(data_vec.data(),
                              valid_data.data(),
                              size,
@@ -424,13 +520,14 @@ class SegmentExpr : public Expr {
         FUNC func,
         std::function<bool(const milvus::SkipIndex&, FieldId, int)> skip_func,
         TargetBitmapView res,
+        TargetBitmapView valid_res,
         ValTypes... values) {
         if (segment_->is_chunked()) {
             return ProcessDataChunksForMultipleChunk<T>(
-                func, skip_func, res, values...);
+                func, skip_func, res, valid_res, values...);
         } else {
             return ProcessDataChunksForSingleChunk<T>(
-                func, skip_func, res, values...);
+                func, skip_func, res, valid_res, values...);
         }
     }
 
