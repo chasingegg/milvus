@@ -87,11 +87,19 @@ class PhyTermFilterExpr : public SegmentExpr {
 
     template <typename T>
     VectorPtr
+    ExecVisitorImplV2(ColumnVector* input);
+
+    template <typename T>
+    VectorPtr
     ExecVisitorImplForIndex();
 
     template <typename T>
     VectorPtr
     ExecVisitorImplForData();
+
+    template <typename T>
+    VectorPtr
+    ExecVisitorImplForDataV2(ColumnVector* input);
 
     template <typename ValueType>
     VectorPtr

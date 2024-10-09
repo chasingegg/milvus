@@ -30,15 +30,15 @@ namespace exec {
 class ExprSet;
 class EvalCtx {
  public:
-    EvalCtx(ExecContext* exec_ctx, ExprSet* expr_set, RowVector* row)
-        : exec_ctx_(exec_ctx), expr_set_(expr_set), row_(row) {
+    EvalCtx(ExecContext* exec_ctx, ExprSet* expr_set, ColumnVector* input)
+        : exec_ctx_(exec_ctx), expr_set_(expr_set), input_(input) {
         assert(exec_ctx_ != nullptr);
         assert(expr_set_ != nullptr);
         // assert(row_ != nullptr);
     }
 
     explicit EvalCtx(ExecContext* exec_ctx)
-        : exec_ctx_(exec_ctx), expr_set_(nullptr), row_(nullptr) {
+        : exec_ctx_(exec_ctx), expr_set_(nullptr), input_(nullptr) {
     }
 
     ExecContext*
@@ -51,11 +51,21 @@ class EvalCtx {
         return exec_ctx_->get_query_config();
     }
 
+    ColumnVector*
+    get_input() {
+        return input_;
+    }
+
+    void
+    set_input(ColumnVector* input) {
+        input_ = input;
+    }
+
  private:
-    ExecContext* exec_ctx_;
-    ExprSet* expr_set_;
-    RowVector* row_;
-    bool input_no_nulls_;
+    ExecContext* exec_ctx_ = nullptr;
+    ExprSet* expr_set_ = nullptr;
+    ColumnVector* input_ = nullptr;
+    bool input_no_nulls_ = false;
 };
 
 }  // namespace exec

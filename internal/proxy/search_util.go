@@ -191,6 +191,7 @@ func parseSearchInfo(searchParamsPair []*commonpb.KeyValuePair, schema *schemapb
 		GroupByFieldId:  groupByFieldId,
 		GroupSize:       groupSize,
 		GroupStrictSize: groupStrictSize,
+		FilterExecutionAlgo: Params.CommonCfg.FilterExecutionAlgo.GetValue(),
 	}, offset, nil
 }
 
