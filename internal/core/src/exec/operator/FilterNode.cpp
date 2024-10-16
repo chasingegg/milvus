@@ -176,7 +176,8 @@ PhyFilterNode::GetOutput() {
     double scalar_cost =
         std::chrono::duration<double, std::micro>(scalar_end - scalar_start)
             .count();
-    monitor::internal_core_search_latency_scalar.Observe(scalar_cost);
+    LOG_INFO("FUCK post filter cost: {}", scalar_cost);
+    monitor::internal_core_search_latency_postfilter.Observe(scalar_cost);
 
     return input_;
 }

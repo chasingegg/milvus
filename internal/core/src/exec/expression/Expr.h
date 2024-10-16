@@ -236,15 +236,12 @@ class SegmentExpr : public Expr {
 
         auto& skip_index = segment_->GetSkipIndex();
         if (!skip_func || !skip_func(skip_index, field_id_, 0)) {
-            auto data_vec =
-                segment_->get_batch_views<T>(field_id_, 0, 0, active_count_)
-                    .first;
-
-            func(data_vec.data(),
-                 input->GetOffsets(),
-                 input->size(),
-                 res,
-                 values...);
+            auto data_vec = segment_->get_views_by_offsets<T>(
+                field_id_, 0, input->GetOffsetsVector());
+            // auto data_vec = segment_->get_batch_views<T>(
+            //     field_id_, 0, 0, active_count_).first;
+            func(data_vec.data(), nullptr, input->size(), res, values...);
+            // func(data_vec.data(), input->GetOffsets(), input->size(), res, values...);
         }
         return input->size();
     }

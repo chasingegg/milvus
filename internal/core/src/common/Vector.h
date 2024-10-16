@@ -101,6 +101,11 @@ class ColumnVector final : public BaseVector {
         return offsets_.data();
     }
 
+    const FixedVector<int64_t>&
+    GetOffsetsVector() {
+        return offsets_;
+    }
+
     template <typename As>
     const As*
     RawAsValues() const {

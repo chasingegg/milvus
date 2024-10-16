@@ -190,6 +190,18 @@ class SegmentInternalInterface : public SegmentInterface {
         return std::make_pair(res, chunk_info.second);
     }
 
+    template <typename ViewType>
+    std::vector<ViewType>
+    get_views_by_offsets(FieldId field_id,
+                         int64_t chunk_id,
+                         const FixedVector<int64_t>& offsets) const {
+        if (this->type() == SegmentType::Growing) {
+            PanicInfo(ErrorCode::Unsupported,
+                      "get chunk views not supported for growing segment");
+        }
+        return chunk_view_by_offsets(field_id, chunk_id, offsets);
+    }
+
     template <typename T>
     const index::ScalarIndex<T>&
     chunk_scalar_index(FieldId field_id, int64_t chunk_id) const {
@@ -380,6 +392,11 @@ class SegmentInternalInterface : public SegmentInterface {
                      int64_t chunk_id,
                      int64_t start_offset,
                      int64_t length) const = 0;
+
+    virtual std::vector<std::string_view>
+    chunk_view_by_offsets(FieldId field_id,
+                          int64_t chunk_id,
+                          const FixedVector<int64_t>& offsets) const = 0;
 
     // internal API: return chunk_index in span, support scalar index only
     virtual const index::IndexBase*
