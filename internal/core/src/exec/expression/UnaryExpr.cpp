@@ -193,19 +193,20 @@ PhyUnaryRangeFilterExpr::Eval(EvalCtx& context, VectorPtr& result) {
             auto val_type = expr_->val_.val_case();
             switch (val_type) {
                 case proto::plan::GenericValue::ValCase::kBoolVal:
-                    result = ExecRangeVisitorImplJson<bool>();
+                    result = ExecRangeVisitorImplJson<bool>(input);
                     break;
                 case proto::plan::GenericValue::ValCase::kInt64Val:
-                    result = ExecRangeVisitorImplJson<int64_t>();
+                    result = ExecRangeVisitorImplJson<int64_t>(input);
                     break;
                 case proto::plan::GenericValue::ValCase::kFloatVal:
-                    result = ExecRangeVisitorImplJson<double>();
+                    result = ExecRangeVisitorImplJson<double>(input);
                     break;
                 case proto::plan::GenericValue::ValCase::kStringVal:
-                    result = ExecRangeVisitorImplJson<std::string>();
+                    result = ExecRangeVisitorImplJson<std::string>(input);
                     break;
                 case proto::plan::GenericValue::ValCase::kArrayVal:
-                    result = ExecRangeVisitorImplJson<proto::plan::Array>();
+                    result =
+                        ExecRangeVisitorImplJson<proto::plan::Array>(input);
                     break;
                 default:
                     PanicInfo(
@@ -527,7 +528,7 @@ PhyUnaryRangeFilterExpr::ExecArrayEqualForIndex(bool reverse) {
 
 template <typename ExprValueType>
 VectorPtr
-PhyUnaryRangeFilterExpr::ExecRangeVisitorImplJson() {
+PhyUnaryRangeFilterExpr::ExecRangeVisitorImplJson(ColumnVector* input) {
     using GetType =
         std::conditional_t<std::is_same_v<ExprValueType, std::string>,
                            std::string_view,
@@ -546,38 +547,39 @@ PhyUnaryRangeFilterExpr::ExecRangeVisitorImplJson() {
     auto op_type = expr_->op_type_;
     auto pointer = milvus::Json::pointer(expr_->column_.nested_path_);
 
-#define UnaryRangeJSONCompare(cmp)                             \
-    do {                                                       \
-        auto x = data[i].template at<GetType>(pointer);        \
-        if (x.error()) {                                       \
-            if constexpr (std::is_same_v<GetType, int64_t>) {  \
-                auto x = data[i].template at<double>(pointer); \
-                res[i] = !x.error() && (cmp);                  \
-                break;                                         \
-            }                                                  \
-            res[i] = false;                                    \
-            break;                                             \
-        }                                                      \
-        res[i] = (cmp);                                        \
+#define UnaryRangeJSONCompare(cmp)                                  \
+    do {                                                            \
+        auto x = data[offset].template at<GetType>(pointer);        \
+        if (x.error()) {                                            \
+            if constexpr (std::is_same_v<GetType, int64_t>) {       \
+                auto x = data[offset].template at<double>(pointer); \
+                res[i] = !x.error() && (cmp);                       \
+                break;                                              \
+            }                                                       \
+            res[i] = false;                                         \
+            break;                                                  \
+        }                                                           \
+        res[i] = (cmp);                                             \
     } while (false)
 
-#define UnaryRangeJSONCompareNotEqual(cmp)                     \
-    do {                                                       \
-        auto x = data[i].template at<GetType>(pointer);        \
-        if (x.error()) {                                       \
-            if constexpr (std::is_same_v<GetType, int64_t>) {  \
-                auto x = data[i].template at<double>(pointer); \
-                res[i] = x.error() || (cmp);                   \
-                break;                                         \
-            }                                                  \
-            res[i] = true;                                     \
-            break;                                             \
-        }                                                      \
-        res[i] = (cmp);                                        \
+#define UnaryRangeJSONCompareNotEqual(cmp)                          \
+    do {                                                            \
+        auto x = data[offset].template at<GetType>(pointer);        \
+        if (x.error()) {                                            \
+            if constexpr (std::is_same_v<GetType, int64_t>) {       \
+                auto x = data[offset].template at<double>(pointer); \
+                res[i] = x.error() || (cmp);                        \
+                break;                                              \
+            }                                                       \
+            res[i] = true;                                          \
+            break;                                                  \
+        }                                                           \
+        res[i] = (cmp);                                             \
     } while (false)
 
     auto execute_sub_batch = [op_type, pointer](const milvus::Json* data,
                                                 const bool* valid_data,
+                                                const int64_t* offsets,
                                                 const int size,
                                                 TargetBitmapView res,
                                                 TargetBitmapView valid_res,
@@ -585,7 +587,8 @@ PhyUnaryRangeFilterExpr::ExecRangeVisitorImplJson() {
         switch (op_type) {
             case proto::plan::GreaterThan: {
                 for (size_t i = 0; i < size; ++i) {
-                    if (valid_data != nullptr && !valid_data[i]) {
+                    size_t offset = offsets ? offsets[i] : i;
+                    if (valid_data != nullptr && !valid_data[offset]) {
                         res[i] = valid_res[i] = false;
                         continue;
                     }
@@ -599,7 +602,8 @@ PhyUnaryRangeFilterExpr::ExecRangeVisitorImplJson() {
             }
             case proto::plan::GreaterEqual: {
                 for (size_t i = 0; i < size; ++i) {
-                    if (valid_data != nullptr && !valid_data[i]) {
+                    size_t offset = offsets ? offsets[i] : i;
+                    if (valid_data != nullptr && !valid_data[offset]) {
                         res[i] = valid_res[i] = false;
                         continue;
                     }
@@ -613,7 +617,8 @@ PhyUnaryRangeFilterExpr::ExecRangeVisitorImplJson() {
             }
             case proto::plan::LessThan: {
                 for (size_t i = 0; i < size; ++i) {
-                    if (valid_data != nullptr && !valid_data[i]) {
+                    size_t offset = offsets ? offsets[i] : i;
+                    if (valid_data != nullptr && !valid_data[offset]) {
                         res[i] = valid_res[i] = false;
                         continue;
                     }
@@ -627,7 +632,8 @@ PhyUnaryRangeFilterExpr::ExecRangeVisitorImplJson() {
             }
             case proto::plan::LessEqual: {
                 for (size_t i = 0; i < size; ++i) {
-                    if (valid_data != nullptr && !valid_data[i]) {
+                    size_t offset = offsets ? offsets[i] : i;
+                    if (valid_data != nullptr && !valid_data[offset]) {
                         res[i] = valid_res[i] = false;
                         continue;
                     }
@@ -641,7 +647,8 @@ PhyUnaryRangeFilterExpr::ExecRangeVisitorImplJson() {
             }
             case proto::plan::Equal: {
                 for (size_t i = 0; i < size; ++i) {
-                    if (valid_data != nullptr && !valid_data[i]) {
+                    size_t offset = offsets ? offsets[i] : i;
+                    if (valid_data != nullptr && !valid_data[offset]) {
                         res[i] = valid_res[i] = false;
                         continue;
                     }
@@ -661,7 +668,8 @@ PhyUnaryRangeFilterExpr::ExecRangeVisitorImplJson() {
             }
             case proto::plan::NotEqual: {
                 for (size_t i = 0; i < size; ++i) {
-                    if (valid_data != nullptr && !valid_data[i]) {
+                    size_t offset = offsets ? offsets[i] : i;
+                    if (valid_data != nullptr && !valid_data[offset]) {
                         res[i] = valid_res[i] = false;
                         continue;
                     }
@@ -681,7 +689,8 @@ PhyUnaryRangeFilterExpr::ExecRangeVisitorImplJson() {
             }
             case proto::plan::PrefixMatch: {
                 for (size_t i = 0; i < size; ++i) {
-                    if (valid_data != nullptr && !valid_data[i]) {
+                    size_t offset = offsets ? offsets[i] : i;
+                    if (valid_data != nullptr && !valid_data[offset]) {
                         res[i] = valid_res[i] = false;
                         continue;
                     }
@@ -699,7 +708,8 @@ PhyUnaryRangeFilterExpr::ExecRangeVisitorImplJson() {
                 auto regex_pattern = translator(val);
                 RegexMatcher matcher(regex_pattern);
                 for (size_t i = 0; i < size; ++i) {
-                    if (valid_data != nullptr && !valid_data[i]) {
+                    size_t offset = offsets ? offsets[i] : i;
+                    if (valid_data != nullptr && !valid_data[offset]) {
                         res[i] = valid_res[i] = false;
                         continue;
                     }
@@ -719,8 +729,8 @@ PhyUnaryRangeFilterExpr::ExecRangeVisitorImplJson() {
                                 op_type));
         }
     };
-    int64_t processed_size = ProcessDataChunks<milvus::Json>(
-        execute_sub_batch, std::nullptr_t{}, res, valid_res, val);
+    int64_t processed_size = ProcessDataByOffsets<milvus::Json>(
+        execute_sub_batch, std::nullptr_t{}, input, res, valid_res, val);
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",

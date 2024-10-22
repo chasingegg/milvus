@@ -211,7 +211,17 @@ class SegmentInternalInterface : public SegmentInterface {
             PanicInfo(ErrorCode::Unsupported,
                       "get chunk views not supported for growing segment");
         }
-        return chunk_view_by_offsets(field_id, chunk_id, offsets);
+        auto chunk_view = chunk_view_by_offsets(field_id, chunk_id, offsets);
+        if constexpr (std::is_same_v<ViewType, std::string_view>) {
+            return chunk_view;
+        } else {
+            std::vector<ViewType> res;
+            res.reserve(chunk_view.size());
+            for (const auto& view : chunk_view) {
+                res.emplace_back(view);
+            }
+            return res;
+        }
     }
 
     template <typename T>
