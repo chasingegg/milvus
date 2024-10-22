@@ -44,13 +44,43 @@ using number = std::optional<number_type>;
 using ChunkDataAccessor = std::function<const number(int)>;
 using MultipleChunkDataAccessor = std::function<const number()>;
 
-template <typename T, typename U, proto::plan::OpType op>
+template <typename T,
+          typename U,
+          proto::plan::OpType op,
+          FilterType filter_type>
 struct CompareElementFunc {
     void
     operator()(const T* left,
                const U* right,
                size_t size,
-               TargetBitmapView res) {
+               TargetBitmapView res,
+               const int64_t* offsets = nullptr) {
+        if constexpr (filter_type == FilterType::post) {
+            for (int i = 0; i < size; ++i) {
+                auto offset = (offsets != nullptr) ? offsets[i] : i;
+                if constexpr (op == proto::plan::OpType::Equal) {
+                    res[i] = left[offset] == right[offset];
+                } else if constexpr (op == proto::plan::OpType::NotEqual) {
+                    res[i] = left[offset] != right[offset];
+                } else if constexpr (op == proto::plan::OpType::GreaterThan) {
+                    res[i] = left[offset] > right[offset];
+                } else if constexpr (op == proto::plan::OpType::LessThan) {
+                    res[i] = left[offset] < right[offset];
+                } else if constexpr (op == proto::plan::OpType::GreaterEqual) {
+                    res[i] = left[offset] >= right[offset];
+                } else if constexpr (op == proto::plan::OpType::LessEqual) {
+                    res[i] = left[offset] <= right[offset];
+                } else {
+                    PanicInfo(
+                        OpTypeInvalid,
+                        fmt::format(
+                            "unsupported op_type:{} for CompareElementFunc",
+                            op));
+                }
+            }
+            return;
+        }
+
         /*
         // This is the original code, kept here for the documentation purposes
         for (int i = 0; i < size; ++i) {
@@ -269,6 +299,7 @@ class PhyCompareFilterExpr : public Expr {
     template <typename T, typename U, typename FUNC, typename... ValTypes>
     int64_t
     ProcessBothDataChunks(FUNC func,
+                          ColumnVector* input,
                           TargetBitmapView res,
                           TargetBitmapView valid_res,
                           ValTypes... values) {
@@ -311,7 +342,12 @@ class PhyCompareFilterExpr : public Expr {
 
             const T* left_data = left_chunk.data() + data_pos;
             const U* right_data = right_chunk.data() + data_pos;
-            func(left_data, right_data, size, res + processed_size, values...);
+            func(left_data,
+                 right_data,
+                 nullptr,
+                 size,
+                 res + processed_size,
+                 values...);
             const bool* left_valid_data = left_chunk.valid_data();
             const bool* right_valid_data = right_chunk.valid_data();
             // mask with valid_data
@@ -369,7 +405,12 @@ class PhyCompareFilterExpr : public Expr {
 
             const T* left_data = left_chunk.data() + data_pos;
             const U* right_data = right_chunk.data() + data_pos;
-            func(left_data, right_data, size, res + processed_size, values...);
+            func(left_data,
+                 right_data,
+                 nullptr,
+                 size,
+                 res + processed_size,
+                 values...);
             const bool* left_valid_data = left_chunk.valid_data();
             const bool* right_valid_data = right_chunk.valid_data();
             // mask with valid_data
@@ -417,15 +458,15 @@ class PhyCompareFilterExpr : public Expr {
     ExecCompareExprDispatcherForHybridSegment();
 
     VectorPtr
-    ExecCompareExprDispatcherForBothDataSegment();
+    ExecCompareExprDispatcherForBothDataSegment(ColumnVector* input);
 
     template <typename T>
     VectorPtr
-    ExecCompareLeftType();
+    ExecCompareLeftType(ColumnVector* input);
 
     template <typename T, typename U>
     VectorPtr
-    ExecCompareRightType();
+    ExecCompareRightType(ColumnVector* input);
 
  private:
     const FieldId left_field_;

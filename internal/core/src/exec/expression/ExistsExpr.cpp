@@ -22,13 +22,14 @@ namespace exec {
 
 void
 PhyExistsFilterExpr::Eval(EvalCtx& context, VectorPtr& result) {
+    auto input = context.get_input();
     switch (expr_->column_.data_type_) {
         case DataType::JSON: {
             if (is_index_mode_) {
                 PanicInfo(ExprInvalid,
                           "exists expr for json index mode not supported");
             }
-            result = EvalJsonExistsForDataSegment();
+            result = EvalJsonExistsForDataSegment(input);
             break;
         }
         default:
@@ -39,7 +40,7 @@ PhyExistsFilterExpr::Eval(EvalCtx& context, VectorPtr& result) {
 }
 
 VectorPtr
-PhyExistsFilterExpr::EvalJsonExistsForDataSegment() {
+PhyExistsFilterExpr::EvalJsonExistsForDataSegment(ColumnVector* input) {
     auto real_batch_size = GetNextBatchSize();
     if (real_batch_size == 0) {
         return nullptr;
@@ -53,21 +54,23 @@ PhyExistsFilterExpr::EvalJsonExistsForDataSegment() {
     auto pointer = milvus::Json::pointer(expr_->column_.nested_path_);
     auto execute_sub_batch = [](const milvus::Json* data,
                                 const bool* valid_data,
+                                const int64_t* offsets,
                                 const int size,
                                 TargetBitmapView res,
                                 TargetBitmapView valid_res,
                                 const std::string& pointer) {
         for (int i = 0; i < size; ++i) {
-            if (valid_data != nullptr && !valid_data[i]) {
+            auto offset = (offsets) ? offsets[i] : i;
+            if (valid_data != nullptr && !valid_data[offset]) {
                 res[i] = valid_res[i] = false;
                 continue;
             }
-            res[i] = data[i].exist(pointer);
+            res[i] = data[offset].exist(pointer);
         }
     };
 
-    int64_t processed_size = ProcessDataChunks<Json>(
-        execute_sub_batch, std::nullptr_t{}, res, valid_res, pointer);
+    int64_t processed_size = ProcessDataByOffsets<Json>(
+        execute_sub_batch, std::nullptr_t{}, input, res, valid_res, pointer);
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",
