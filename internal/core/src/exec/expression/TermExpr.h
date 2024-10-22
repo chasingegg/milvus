@@ -103,27 +103,27 @@ class PhyTermFilterExpr : public SegmentExpr {
 
     template <typename ValueType>
     VectorPtr
-    ExecVisitorImplTemplateJson();
+    ExecVisitorImplTemplateJson(ColumnVector* input);
 
     template <typename ValueType>
     VectorPtr
-    ExecTermJsonVariableInField();
+    ExecTermJsonVariableInField(ColumnVector* input);
 
     template <typename ValueType>
     VectorPtr
-    ExecTermJsonFieldInVariable();
+    ExecTermJsonFieldInVariable(ColumnVector* input);
 
     template <typename ValueType>
     VectorPtr
-    ExecVisitorImplTemplateArray();
+    ExecVisitorImplTemplateArray(ColumnVector* input);
 
     template <typename ValueType>
     VectorPtr
-    ExecTermArrayVariableInField();
+    ExecTermArrayVariableInField(ColumnVector* input);
 
     template <typename ValueType>
     VectorPtr
-    ExecTermArrayFieldInVariable();
+    ExecTermArrayFieldInVariable(ColumnVector* input);
 
  private:
     std::shared_ptr<const milvus::expr::TermFilterExpr> expr_;

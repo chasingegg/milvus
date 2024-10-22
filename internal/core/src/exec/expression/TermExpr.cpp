@@ -23,11 +23,11 @@ namespace exec {
 
 void
 PhyTermFilterExpr::Eval(EvalCtx& context, VectorPtr& result) {
-    if (is_pk_field_) {
+    auto input = context.get_input();
+    if (is_pk_field_ && input != nullptr) {
         result = ExecPkTermImpl();
         return;
     }
-    auto input = context.get_input();
     switch (expr_->column_.data_type_) {
         case DataType::BOOL: {
             result = ExecVisitorImplV2<bool>(input);
@@ -70,22 +70,22 @@ PhyTermFilterExpr::Eval(EvalCtx& context, VectorPtr& result) {
         }
         case DataType::JSON: {
             if (expr_->vals_.size() == 0) {
-                result = ExecVisitorImplTemplateJson<bool>();
+                result = ExecVisitorImplTemplateJson<bool>(input);
                 break;
             }
             auto type = expr_->vals_[0].val_case();
             switch (type) {
                 case proto::plan::GenericValue::ValCase::kBoolVal:
-                    result = ExecVisitorImplTemplateJson<bool>();
+                    result = ExecVisitorImplTemplateJson<bool>(input);
                     break;
                 case proto::plan::GenericValue::ValCase::kInt64Val:
-                    result = ExecVisitorImplTemplateJson<int64_t>();
+                    result = ExecVisitorImplTemplateJson<int64_t>(input);
                     break;
                 case proto::plan::GenericValue::ValCase::kFloatVal:
-                    result = ExecVisitorImplTemplateJson<double>();
+                    result = ExecVisitorImplTemplateJson<double>(input);
                     break;
                 case proto::plan::GenericValue::ValCase::kStringVal:
-                    result = ExecVisitorImplTemplateJson<std::string>();
+                    result = ExecVisitorImplTemplateJson<std::string>(input);
                     break;
                 default:
                     PanicInfo(DataTypeInvalid, "unknown data type: {}", type);
@@ -95,26 +95,26 @@ PhyTermFilterExpr::Eval(EvalCtx& context, VectorPtr& result) {
         case DataType::ARRAY: {
             if (expr_->vals_.size() == 0) {
                 SetNotUseIndex();
-                result = ExecVisitorImplTemplateArray<bool>();
+                result = ExecVisitorImplTemplateArray<bool>(input);
                 break;
             }
             auto type = expr_->vals_[0].val_case();
             switch (type) {
                 case proto::plan::GenericValue::ValCase::kBoolVal:
                     SetNotUseIndex();
-                    result = ExecVisitorImplTemplateArray<bool>();
+                    result = ExecVisitorImplTemplateArray<bool>(input);
                     break;
                 case proto::plan::GenericValue::ValCase::kInt64Val:
                     SetNotUseIndex();
-                    result = ExecVisitorImplTemplateArray<int64_t>();
+                    result = ExecVisitorImplTemplateArray<int64_t>(input);
                     break;
                 case proto::plan::GenericValue::ValCase::kFloatVal:
                     SetNotUseIndex();
-                    result = ExecVisitorImplTemplateArray<double>();
+                    result = ExecVisitorImplTemplateArray<double>(input);
                     break;
                 case proto::plan::GenericValue::ValCase::kStringVal:
                     SetNotUseIndex();
-                    result = ExecVisitorImplTemplateArray<std::string>();
+                    result = ExecVisitorImplTemplateArray<std::string>(input);
                     break;
                 default:
                     PanicInfo(DataTypeInvalid, "unknown data type: {}", type);
@@ -218,27 +218,27 @@ PhyTermFilterExpr::ExecPkTermImpl() {
 
 template <typename ValueType>
 VectorPtr
-PhyTermFilterExpr::ExecVisitorImplTemplateJson() {
+PhyTermFilterExpr::ExecVisitorImplTemplateJson(ColumnVector* input) {
     if (expr_->is_in_field_) {
-        return ExecTermJsonVariableInField<ValueType>();
+        return ExecTermJsonVariableInField<ValueType>(input);
     } else {
-        return ExecTermJsonFieldInVariable<ValueType>();
+        return ExecTermJsonFieldInVariable<ValueType>(input);
     }
 }
 
 template <typename ValueType>
 VectorPtr
-PhyTermFilterExpr::ExecVisitorImplTemplateArray() {
+PhyTermFilterExpr::ExecVisitorImplTemplateArray(ColumnVector* input) {
     if (expr_->is_in_field_) {
-        return ExecTermArrayVariableInField<ValueType>();
+        return ExecTermArrayVariableInField<ValueType>(input);
     } else {
-        return ExecTermArrayFieldInVariable<ValueType>();
+        return ExecTermArrayFieldInVariable<ValueType>(input);
     }
 }
 
 template <typename ValueType>
 VectorPtr
-PhyTermFilterExpr::ExecTermArrayVariableInField() {
+PhyTermFilterExpr::ExecTermArrayVariableInField(ColumnVector* input) {
     using GetType = std::conditional_t<std::is_same_v<ValueType, std::string>,
                                        std::string_view,
                                        ValueType>;
@@ -259,6 +259,7 @@ PhyTermFilterExpr::ExecTermArrayVariableInField() {
 
     auto execute_sub_batch = [](const ArrayView* data,
                                 const bool* valid_data,
+                                const int64_t* offsets,
                                 const int size,
                                 TargetBitmapView res,
                                 TargetBitmapView valid_res,
@@ -273,16 +274,17 @@ PhyTermFilterExpr::ExecTermArrayVariableInField() {
             return false;
         };
         for (int i = 0; i < size; ++i) {
-            if (valid_data != nullptr && !valid_data[i]) {
+            auto offset = (offsets) ? offsets[i] : i;
+            if (valid_data != nullptr && !valid_data[offset]) {
                 res[i] = valid_res[i] = false;
                 continue;
             }
-            executor(i);
+            executor(offset);
         }
     };
 
-    int64_t processed_size = ProcessDataChunks<milvus::ArrayView>(
-        execute_sub_batch, std::nullptr_t{}, res, valid_res, target_val);
+    int64_t processed_size = ProcessDataByOffsets<milvus::ArrayView>(
+        execute_sub_batch, std::nullptr_t{}, input, res, valid_res, target_val);
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",
@@ -293,7 +295,7 @@ PhyTermFilterExpr::ExecTermArrayVariableInField() {
 
 template <typename ValueType>
 VectorPtr
-PhyTermFilterExpr::ExecTermArrayFieldInVariable() {
+PhyTermFilterExpr::ExecTermArrayFieldInVariable(ColumnVector* input) {
     using GetType = std::conditional_t<std::is_same_v<ValueType, std::string>,
                                        std::string_view,
                                        ValueType>;
@@ -357,7 +359,7 @@ PhyTermFilterExpr::ExecTermArrayFieldInVariable() {
 
 template <typename ValueType>
 VectorPtr
-PhyTermFilterExpr::ExecTermJsonVariableInField() {
+PhyTermFilterExpr::ExecTermJsonVariableInField(ColumnVector* input) {
     using GetType = std::conditional_t<std::is_same_v<ValueType, std::string>,
                                        std::string_view,
                                        ValueType>;
@@ -420,7 +422,7 @@ PhyTermFilterExpr::ExecTermJsonVariableInField() {
 
 template <typename ValueType>
 VectorPtr
-PhyTermFilterExpr::ExecTermJsonFieldInVariable() {
+PhyTermFilterExpr::ExecTermJsonFieldInVariable(ColumnVector* input) {
     using GetType = std::conditional_t<std::is_same_v<ValueType, std::string>,
                                        std::string_view,
                                        ValueType>;
