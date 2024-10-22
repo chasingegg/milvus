@@ -21,48 +21,49 @@ namespace exec {
 
 void
 PhyBinaryArithOpEvalRangeExpr::Eval(EvalCtx& context, VectorPtr& result) {
+    auto input = context.get_input();
     switch (expr_->column_.data_type_) {
         case DataType::BOOL: {
-            result = ExecRangeVisitorImpl<bool>();
+            result = ExecRangeVisitorImpl<bool>(input);
             break;
         }
         case DataType::INT8: {
-            result = ExecRangeVisitorImpl<int8_t>();
+            result = ExecRangeVisitorImpl<int8_t>(input);
             break;
         }
         case DataType::INT16: {
-            result = ExecRangeVisitorImpl<int16_t>();
+            result = ExecRangeVisitorImpl<int16_t>(input);
             break;
         }
         case DataType::INT32: {
-            result = ExecRangeVisitorImpl<int32_t>();
+            result = ExecRangeVisitorImpl<int32_t>(input);
             break;
         }
         case DataType::INT64: {
-            result = ExecRangeVisitorImpl<int64_t>();
+            result = ExecRangeVisitorImpl<int64_t>(input);
             break;
         }
         case DataType::FLOAT: {
-            result = ExecRangeVisitorImpl<float>();
+            result = ExecRangeVisitorImpl<float>(input);
             break;
         }
         case DataType::DOUBLE: {
-            result = ExecRangeVisitorImpl<double>();
+            result = ExecRangeVisitorImpl<double>(input);
             break;
         }
         case DataType::JSON: {
             auto value_type = expr_->value_.val_case();
             switch (value_type) {
                 case proto::plan::GenericValue::ValCase::kBoolVal: {
-                    result = ExecRangeVisitorImplForJson<bool>();
+                    result = ExecRangeVisitorImplForJson<bool>(input);
                     break;
                 }
                 case proto::plan::GenericValue::ValCase::kInt64Val: {
-                    result = ExecRangeVisitorImplForJson<int64_t>();
+                    result = ExecRangeVisitorImplForJson<int64_t>(input);
                     break;
                 }
                 case proto::plan::GenericValue::ValCase::kFloatVal: {
-                    result = ExecRangeVisitorImplForJson<double>();
+                    result = ExecRangeVisitorImplForJson<double>(input);
                     break;
                 }
                 default: {
@@ -79,12 +80,12 @@ PhyBinaryArithOpEvalRangeExpr::Eval(EvalCtx& context, VectorPtr& result) {
             switch (value_type) {
                 case proto::plan::GenericValue::ValCase::kInt64Val: {
                     SetNotUseIndex();
-                    result = ExecRangeVisitorImplForArray<int64_t>();
+                    result = ExecRangeVisitorImplForArray<int64_t>(input);
                     break;
                 }
                 case proto::plan::GenericValue::ValCase::kFloatVal: {
                     SetNotUseIndex();
-                    result = ExecRangeVisitorImplForArray<double>();
+                    result = ExecRangeVisitorImplForArray<double>(input);
                     break;
                 }
                 default: {
@@ -890,11 +891,11 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForArray() {
 
 template <typename T>
 VectorPtr
-PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImpl() {
-    if (is_index_mode_ && IndexHasRawData<T>()) {
+PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImpl(ColumnVector* input) {
+    if (is_index_mode_ && IndexHasRawData<T>() && !input) {
         return ExecRangeVisitorImplForIndex<T>();
     } else {
-        return ExecRangeVisitorImplForData<T>();
+        return ExecRangeVisitorImplForData<T>(input);
     }
 }
 
@@ -1280,7 +1281,7 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForIndex() {
 
 template <typename T>
 VectorPtr
-PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForData() {
+PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForData(ColumnVector* input) {
     typedef std::conditional_t<std::is_integral_v<T> &&
                                    !std::is_same_v<bool, T>,
                                int64_t,

@@ -88,7 +88,8 @@ struct ArithOpHelper<proto::plan::ArithOpType::Mod> {
 
 template <typename T,
           proto::plan::OpType cmp_op,
-          proto::plan::ArithOpType arith_op>
+          proto::plan::ArithOpType arith_op,
+          FilterType filter_type = FilterType::pre>
 struct ArithOpElementFunc {
     typedef std::conditional_t<std::is_integral_v<T> &&
                                    !std::is_same_v<bool, T>,
@@ -103,138 +104,140 @@ struct ArithOpElementFunc {
                TargetBitmapView res) {
         /*
         // This is the original code, kept here for the documentation purposes
-        for (int i = 0; i < size; ++i) {
-            if constexpr (cmp_op == proto::plan::OpType::Equal) {
-                if constexpr (arith_op == proto::plan::ArithOpType::Add) {
-                    res[i] = (src[i] + right_operand) == val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Sub) {
-                    res[i] = (src[i] - right_operand) == val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Mul) {
-                    res[i] = (src[i] * right_operand) == val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Div) {
-                    res[i] = (src[i] / right_operand) == val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Mod) {
-                    res[i] = (fmod(src[i], right_operand)) == val;
-                } else {
-                    PanicInfo(
-                        OpTypeInvalid,
-                        fmt::format(
-                            "unsupported arith type:{} for ArithOpElementFunc",
-                            arith_op));
-                }
-            } else if constexpr (cmp_op == proto::plan::OpType::NotEqual) {
-                if constexpr (arith_op == proto::plan::ArithOpType::Add) {
-                    res[i] = (src[i] + right_operand) != val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Sub) {
-                    res[i] = (src[i] - right_operand) != val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Mul) {
-                    res[i] = (src[i] * right_operand) != val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Div) {
-                    res[i] = (src[i] / right_operand) != val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Mod) {
-                    res[i] = (fmod(src[i], right_operand)) != val;
-                } else {
-                    PanicInfo(
-                        OpTypeInvalid,
-                        fmt::format(
-                            "unsupported arith type:{} for ArithOpElementFunc",
-                            arith_op));
-                }
-            } else if constexpr (cmp_op == proto::plan::OpType::GreaterThan) {
-                if constexpr (arith_op == proto::plan::ArithOpType::Add) {
-                    res[i] = (src[i] + right_operand) > val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Sub) {
-                    res[i] = (src[i] - right_operand) > val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Mul) {
-                    res[i] = (src[i] * right_operand) > val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Div) {
-                    res[i] = (src[i] / right_operand) > val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Mod) {
-                    res[i] = (fmod(src[i], right_operand)) > val;
-                } else {
-                    PanicInfo(
-                        OpTypeInvalid,
-                        fmt::format(
-                            "unsupported arith type:{} for ArithOpElementFunc",
-                            arith_op));
-                }
-            } else if constexpr (cmp_op == proto::plan::OpType::GreaterEqual) {
-                if constexpr (arith_op == proto::plan::ArithOpType::Add) {
-                    res[i] = (src[i] + right_operand) >= val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Sub) {
-                    res[i] = (src[i] - right_operand) >= val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Mul) {
-                    res[i] = (src[i] * right_operand) >= val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Div) {
-                    res[i] = (src[i] / right_operand) >= val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Mod) {
-                    res[i] = (fmod(src[i], right_operand)) >= val;
-                } else {
-                    PanicInfo(
-                        OpTypeInvalid,
-                        fmt::format(
-                            "unsupported arith type:{} for ArithOpElementFunc",
-                            arith_op));
-                }
-            } else if constexpr (cmp_op == proto::plan::OpType::LessThan) {
-                if constexpr (arith_op == proto::plan::ArithOpType::Add) {
-                    res[i] = (src[i] + right_operand) < val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Sub) {
-                    res[i] = (src[i] - right_operand) < val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Mul) {
-                    res[i] = (src[i] * right_operand) < val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Div) {
-                    res[i] = (src[i] / right_operand) < val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Mod) {
-                    res[i] = (fmod(src[i], right_operand)) < val;
-                } else {
-                    PanicInfo(
-                        OpTypeInvalid,
-                        fmt::format(
-                            "unsupported arith type:{} for ArithOpElementFunc",
-                            arith_op));
-                }
-            } else if constexpr (cmp_op == proto::plan::OpType::LessEqual) {
-                if constexpr (arith_op == proto::plan::ArithOpType::Add) {
-                    res[i] = (src[i] + right_operand) <= val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Sub) {
-                    res[i] = (src[i] - right_operand) <= val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Mul) {
-                    res[i] = (src[i] * right_operand) <= val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Div) {
-                    res[i] = (src[i] / right_operand) <= val;
-                } else if constexpr (arith_op ==
-                                     proto::plan::ArithOpType::Mod) {
-                    res[i] = (fmod(src[i], right_operand)) <= val;
-                } else {
-                    PanicInfo(
-                        OpTypeInvalid,
-                        fmt::format(
-                            "unsupported arith type:{} for ArithOpElementFunc",
-                            arith_op));
+        if constexpr (filter_type == FilterType::post) {
+            for (int i = 0; i < size; ++i) {
+                if constexpr (cmp_op == proto::plan::OpType::Equal) {
+                    if constexpr (arith_op == proto::plan::ArithOpType::Add) {
+                        res[i] = (src[i] + right_operand) == val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Sub) {
+                        res[i] = (src[i] - right_operand) == val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Mul) {
+                        res[i] = (src[i] * right_operand) == val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Div) {
+                        res[i] = (src[i] / right_operand) == val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Mod) {
+                        res[i] = (fmod(src[i], right_operand)) == val;
+                    } else {
+                        PanicInfo(
+                            OpTypeInvalid,
+                            fmt::format(
+                                "unsupported arith type:{} for ArithOpElementFunc",
+                                arith_op));
+                    }
+                } else if constexpr (cmp_op == proto::plan::OpType::NotEqual) {
+                    if constexpr (arith_op == proto::plan::ArithOpType::Add) {
+                        res[i] = (src[i] + right_operand) != val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Sub) {
+                        res[i] = (src[i] - right_operand) != val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Mul) {
+                        res[i] = (src[i] * right_operand) != val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Div) {
+                        res[i] = (src[i] / right_operand) != val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Mod) {
+                        res[i] = (fmod(src[i], right_operand)) != val;
+                    } else {
+                        PanicInfo(
+                            OpTypeInvalid,
+                            fmt::format(
+                                "unsupported arith type:{} for ArithOpElementFunc",
+                                arith_op));
+                    }
+                } else if constexpr (cmp_op == proto::plan::OpType::GreaterThan) {
+                    if constexpr (arith_op == proto::plan::ArithOpType::Add) {
+                        res[i] = (src[i] + right_operand) > val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Sub) {
+                        res[i] = (src[i] - right_operand) > val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Mul) {
+                        res[i] = (src[i] * right_operand) > val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Div) {
+                        res[i] = (src[i] / right_operand) > val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Mod) {
+                        res[i] = (fmod(src[i], right_operand)) > val;
+                    } else {
+                        PanicInfo(
+                            OpTypeInvalid,
+                            fmt::format(
+                                "unsupported arith type:{} for ArithOpElementFunc",
+                                arith_op));
+                    }
+                } else if constexpr (cmp_op == proto::plan::OpType::GreaterEqual) {
+                    if constexpr (arith_op == proto::plan::ArithOpType::Add) {
+                        res[i] = (src[i] + right_operand) >= val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Sub) {
+                        res[i] = (src[i] - right_operand) >= val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Mul) {
+                        res[i] = (src[i] * right_operand) >= val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Div) {
+                        res[i] = (src[i] / right_operand) >= val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Mod) {
+                        res[i] = (fmod(src[i], right_operand)) >= val;
+                    } else {
+                        PanicInfo(
+                            OpTypeInvalid,
+                            fmt::format(
+                                "unsupported arith type:{} for ArithOpElementFunc",
+                                arith_op));
+                    }
+                } else if constexpr (cmp_op == proto::plan::OpType::LessThan) {
+                    if constexpr (arith_op == proto::plan::ArithOpType::Add) {
+                        res[i] = (src[i] + right_operand) < val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Sub) {
+                        res[i] = (src[i] - right_operand) < val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Mul) {
+                        res[i] = (src[i] * right_operand) < val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Div) {
+                        res[i] = (src[i] / right_operand) < val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Mod) {
+                        res[i] = (fmod(src[i], right_operand)) < val;
+                    } else {
+                        PanicInfo(
+                            OpTypeInvalid,
+                            fmt::format(
+                                "unsupported arith type:{} for ArithOpElementFunc",
+                                arith_op));
+                    }
+                } else if constexpr (cmp_op == proto::plan::OpType::LessEqual) {
+                    if constexpr (arith_op == proto::plan::ArithOpType::Add) {
+                        res[i] = (src[i] + right_operand) <= val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Sub) {
+                        res[i] = (src[i] - right_operand) <= val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Mul) {
+                        res[i] = (src[i] * right_operand) <= val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Div) {
+                        res[i] = (src[i] / right_operand) <= val;
+                    } else if constexpr (arith_op ==
+                                        proto::plan::ArithOpType::Mod) {
+                        res[i] = (fmod(src[i], right_operand)) <= val;
+                    } else {
+                        PanicInfo(
+                            OpTypeInvalid,
+                            fmt::format(
+                                "unsupported arith type:{} for ArithOpElementFunc",
+                                arith_op));
+                    }
                 }
             }
         }
@@ -449,7 +452,7 @@ class PhyBinaryArithOpEvalRangeExpr : public SegmentExpr {
  private:
     template <typename T>
     VectorPtr
-    ExecRangeVisitorImpl();
+    ExecRangeVisitorImpl(ColumnVector* input);
 
     template <typename T>
     VectorPtr
@@ -457,15 +460,15 @@ class PhyBinaryArithOpEvalRangeExpr : public SegmentExpr {
 
     template <typename T>
     VectorPtr
-    ExecRangeVisitorImplForData();
+    ExecRangeVisitorImplForData(ColumnVector* input);
 
     template <typename ValueType>
     VectorPtr
-    ExecRangeVisitorImplForJson();
+    ExecRangeVisitorImplForJson(ColumnVector* input);
 
     template <typename ValueType>
     VectorPtr
-    ExecRangeVisitorImplForArray();
+    ExecRangeVisitorImplForArray(ColumnVector* input);
 
  private:
     std::shared_ptr<const milvus::expr::BinaryArithOpEvalRangeExpr> expr_;
