@@ -203,7 +203,7 @@ class SegmentInternalInterface : public SegmentInterface {
     }
 
     template <typename ViewType>
-    std::vector<ViewType>
+    std::pair<std::vector<ViewType>, FixedVector<bool>>
     get_views_by_offsets(FieldId field_id,
                          int64_t chunk_id,
                          const FixedVector<int64_t>& offsets) const {
@@ -216,11 +216,11 @@ class SegmentInternalInterface : public SegmentInterface {
             return chunk_view;
         } else {
             std::vector<ViewType> res;
-            res.reserve(chunk_view.size());
-            for (const auto& view : chunk_view) {
+            res.reserve(chunk_view.first.size());
+            for (const auto& view : chunk_view.first) {
                 res.emplace_back(view);
             }
-            return res;
+            return {res, chunk_view.second};
         }
     }
 
@@ -431,7 +431,7 @@ class SegmentInternalInterface : public SegmentInterface {
                      int64_t start_offset,
                      int64_t length) const = 0;
 
-    virtual std::vector<std::string_view>
+    virtual std::pair<std::vector<std::string_view>, FixedVector<bool>>
     chunk_view_by_offsets(FieldId field_id,
                           int64_t chunk_id,
                           const FixedVector<int64_t>& offsets) const = 0;

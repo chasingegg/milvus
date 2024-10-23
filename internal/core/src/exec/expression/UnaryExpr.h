@@ -76,6 +76,8 @@ struct UnaryElementFunc {
             return;
         }
 
+        // This is the original code, which is kept for the documentation purposes
+        // also, for post filter
         if constexpr (filter_type == FilterType::post) {
             for (int i = 0; i < size; ++i) {
                 auto offset = (offsets != nullptr) ? offsets[i] : i;
@@ -103,33 +105,6 @@ struct UnaryElementFunc {
             }
             return;
         }
-
-        /*
-        // This is the original code, which is kept for the documentation purposes
-        for (int i = 0; i < size; ++i) {
-            if constexpr (op == proto::plan::OpType::Equal) {
-                res[i] = src[i] == val;
-            } else if constexpr (op == proto::plan::OpType::NotEqual) {
-                res[i] = src[i] != val;
-            } else if constexpr (op == proto::plan::OpType::GreaterThan) {
-                res[i] = src[i] > val;
-            } else if constexpr (op == proto::plan::OpType::LessThan) {
-                res[i] = src[i] < val;
-            } else if constexpr (op == proto::plan::OpType::GreaterEqual) {
-                res[i] = src[i] >= val;
-            } else if constexpr (op == proto::plan::OpType::LessEqual) {
-                res[i] = src[i] <= val;
-            } else if constexpr (op == proto::plan::OpType::PrefixMatch) {
-                res[i] = milvus::query::Match(
-                    src[i], val, proto::plan::OpType::PrefixMatch);
-            } else {
-                PanicInfo(
-                    OpTypeInvalid,
-                    fmt::format("unsupported op_type:{} for UnaryElementFunc",
-                                op));
-            }
-        }
-        */
 
         if constexpr (op == proto::plan::OpType::PrefixMatch) {
             for (int i = 0; i < size; ++i) {

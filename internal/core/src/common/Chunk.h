@@ -131,6 +131,9 @@ class StringChunk : public Chunk {
     std::pair<std::vector<std::string_view>, FixedVector<bool>>
     StringViews();
 
+    std::pair<std::vector<std::string_view>, FixedVector<bool>>
+    ViewsByOffsets(const FixedVector<int64_t>& offsets);
+
     const char*
     ValueAt(int64_t idx) const override {
         PanicInfo(ErrorCode::Unsupported,

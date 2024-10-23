@@ -805,7 +805,7 @@ ChunkedSegmentSealedImpl::chunk_view_impl(FieldId field_id,
               "chunk_view_impl only used for variable column field ");
 }
 
-std::vector<std::string_view>
+std::pair<std::vector<std::string_view>, FixedVector<bool>>
 ChunkedSegmentSealedImpl::chunk_view_by_offsets(
     FieldId field_id,
     int64_t chunk_id,
@@ -816,7 +816,7 @@ ChunkedSegmentSealedImpl::chunk_view_by_offsets(
     auto& field_meta = schema_->operator[](field_id);
     if (auto it = fields_.find(field_id); it != fields_.end()) {
         auto& field_data = it->second;
-        return field_data->ViewsByOffsets(offsets);
+        return field_data->ViewsByOffsets(chunk_id, offsets);
     }
     PanicInfo(ErrorCode::UnexpectedError,
               "chunk_view_by_offsets only used for variable column field ");

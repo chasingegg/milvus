@@ -153,19 +153,6 @@ PhyFilterNode::GetOutput() {
     query_context_->set_search_result(std::move(search_result));
 
     // TargetBitmap bitset;
-    // while (num_processed_rows_ < need_process_rows_) {
-    //     exprs_->Eval(0, 1, true, eval_ctx, results_);
-
-    //     AssertInfo(results_.size() == 1 && results_[0] != nullptr,
-    //                "PhyFilterBitsNode result size should be size one and not "
-    //                "be nullptr");
-
-    //     auto col_vec = std::dynamic_pointer_cast<ColumnVector>(results_[0]);
-    //     auto col_vec_size = col_vec->size();
-    //     TargetBitmapView view(col_vec->GetRawData(), col_vec_size);
-    //     bitset.append(view);
-    //     num_processed_rows_ += col_vec_size;
-    // }
     // bitset.flip();
     // Assert(bitset.size() == need_process_rows_);
     // num_processed_rows_ = need_process_rows_;

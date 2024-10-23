@@ -280,8 +280,8 @@ class SegmentExpr : public Expr {
         return need_size;
     }
 
-    // a copy-paste of ProcessChunkForSealedSeg for data offsets check
-    // need to discuss with zhanglu why it is needed???
+    // accept offsets array and process on the scalar data by offsets
+    // stateless! Just check and set bitset as result, does not need to move cursor
     // used for processing raw data expr for sealed segments.
     // now only used for std::string_view && json
     // TODO: support more types
@@ -294,27 +294,28 @@ class SegmentExpr : public Expr {
         TargetBitmapView res,
         TargetBitmapView valid_res,
         ValTypes... values) {
-        // For sealed segment, only single chunk
+        // For non_chunked sealed segment, only single chunk
         Assert(num_data_chunk_ == 1);
 
         auto& skip_index = segment_->GetSkipIndex();
         if (!skip_func || !skip_func(skip_index, field_id_, 0)) {
-            auto data_vec = segment_->get_views_by_offsets<T>(
+            auto [data_vec, valid_data] = segment_->get_views_by_offsets<T>(
                 field_id_, 0, input->GetOffsetsVector());
             // auto data_vec = segment_->get_batch_views<T>(
             //     field_id_, 0, 0, active_count_).first;
             func(data_vec.data(),
-                 nullptr,
+                 valid_data.data(),
                  nullptr,
                  input->size(),
                  res,
                  valid_res,
                  values...);
-            // func(data_vec.data(), input->GetOffsets(), input->size(), res, values...);
         }
         return input->size();
     }
 
+    // accept offsets array and process on the scalar data by offsets
+    // stateless! Just check and set bitset as result, does not need to move cursor
     template <typename T, typename FUNC, typename... ValTypes>
     int64_t
     ProcessDataByOffsets(
@@ -326,29 +327,78 @@ class SegmentExpr : public Expr {
         ValTypes... values) {
         int64_t processed_size = 0;
 
-        if constexpr (std::is_same_v<T, std::string_view> ||
-                      std::is_same_v<T, Json>) {
-            if (segment_->type() == SegmentType::Sealed) {
-                return ProcessDataByOffsetsForSealedSeg<T>(
-                    func, skip_func, input, res, valid_res, values...);
-            }
-        }
         auto& skip_index = segment_->GetSkipIndex();
 
         // sealed segment
         if (segment_->type() == SegmentType::Sealed) {
-            if (!skip_func || !skip_func(skip_index, field_id_, 0)) {
-                auto chunk = segment_->chunk_data<T>(field_id_, 0);
-                const T* data = chunk.data();
-                const bool* valid_data = chunk.valid_data();
-                func(data,
-                     valid_data,
-                     input->GetOffsets(),
-                     input->size(),
-                     res,
-                     valid_res,
-                     values...);
-                return input->size();
+            if (segment_->is_chunked()) {
+                if constexpr (std::is_same_v<T, std::string_view> ||
+                              std::is_same_v<T, Json>) {
+                    for (size_t i = 0; i < input->size(); ++i) {
+                        int64_t offset = input->GetOffsets()[i];
+                        auto [chunk_id, chunk_offset] =
+                            segment_->get_chunk_by_offset(field_id_, offset);
+                        if (!skip_func ||
+                            !skip_func(skip_index, field_id_, chunk_id)) {
+                            auto [data_vec, valid_data] =
+                                segment_->get_views_by_offsets<T>(
+                                    field_id_, chunk_id, {chunk_offset});
+                            // auto data_vec = segment_->get_batch_views<T>(
+                            //     field_id_, 0, 0, active_count_).first;
+                            func(data_vec.data(),
+                                 valid_data.data(),
+                                 nullptr,
+                                 1,
+                                 res + processed_size,
+                                 valid_res + processed_size,
+                                 values...);
+                            processed_size++;
+                        }
+                    }
+                    return input->size();
+                }
+                for (size_t i = 0; i < input->size(); ++i) {
+                    int64_t offset = input->GetOffsets()[i];
+                    auto [chunk_id, chunk_offset] =
+                        segment_->get_chunk_by_offset(field_id_, offset);
+                    if (!skip_func ||
+                        !skip_func(skip_index, field_id_, chunk_id)) {
+                        auto chunk =
+                            segment_->chunk_data<T>(field_id_, chunk_id);
+                        const T* data = chunk.data() + chunk_offset;
+                        const bool* valid_data = chunk.valid_data();
+                        if (valid_data != nullptr) {
+                            valid_data += chunk_offset;
+                        }
+                        func(data,
+                             valid_data,
+                             nullptr,
+                             1,
+                             res + processed_size,
+                             valid_res + processed_size,
+                             values...);
+                        processed_size++;
+                    }
+                }
+            } else {
+                if constexpr (std::is_same_v<T, std::string_view> ||
+                              std::is_same_v<T, Json>) {
+                    return ProcessDataByOffsetsForSealedSeg<T>(
+                        func, skip_func, input, res, valid_res, values...);
+                }
+                if (!skip_func || !skip_func(skip_index, field_id_, 0)) {
+                    auto chunk = segment_->chunk_data<T>(field_id_, 0);
+                    const T* data = chunk.data();
+                    const bool* valid_data = chunk.valid_data();
+                    func(data,
+                         valid_data,
+                         input->GetOffsets(),
+                         input->size(),
+                         res,
+                         valid_res,
+                         values...);
+                    return input->size();
+                }
             }
         } else {
             // growing segment
@@ -360,6 +410,9 @@ class SegmentExpr : public Expr {
                     auto chunk = segment_->chunk_data<T>(field_id_, chunk_id);
                     const T* data = chunk.data() + chunk_offset;
                     const bool* valid_data = chunk.valid_data();
+                    if (valid_data != nullptr) {
+                        valid_data += chunk_offset;
+                    }
                     func(data,
                          valid_data,
                          nullptr,
