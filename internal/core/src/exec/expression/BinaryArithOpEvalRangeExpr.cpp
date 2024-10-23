@@ -106,7 +106,8 @@ PhyBinaryArithOpEvalRangeExpr::Eval(EvalCtx& context, VectorPtr& result) {
 
 template <typename ValueType>
 VectorPtr
-PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForJson() {
+PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForJson(
+    ColumnVector* input) {
     using GetType = std::conditional_t<std::is_same_v<ValueType, std::string>,
                                        std::string_view,
                                        ValueType>;
@@ -129,52 +130,55 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForJson() {
             ? GetValueFromProto<ValueType>(expr_->right_operand_)
             : ValueType();
 
-#define BinaryArithRangeJSONCompare(cmp)                           \
-    do {                                                           \
-        for (size_t i = 0; i < size; ++i) {                        \
-            if (valid_data != nullptr && !valid_data[i]) {         \
-                res[i] = false;                                    \
-                valid_res[i] = false;                              \
-                continue;                                          \
-            }                                                      \
-            auto x = data[i].template at<GetType>(pointer);        \
-            if (x.error()) {                                       \
-                if constexpr (std::is_same_v<GetType, int64_t>) {  \
-                    auto x = data[i].template at<double>(pointer); \
-                    res[i] = !x.error() && (cmp);                  \
-                    continue;                                      \
-                }                                                  \
-                res[i] = false;                                    \
-                continue;                                          \
-            }                                                      \
-            res[i] = (cmp);                                        \
-        }                                                          \
+#define BinaryArithRangeJSONCompare(cmp)                                \
+    do {                                                                \
+        for (size_t i = 0; i < size; ++i) {                             \
+            auto offset = (offsets) ? offsets[i] : i;                   \
+            if (valid_data != nullptr && !valid_data[offset]) {         \
+                res[i] = false;                                         \
+                valid_res[i] = false;                                   \
+                continue;                                               \
+            }                                                           \
+            auto x = data[offset].template at<GetType>(pointer);        \
+            if (x.error()) {                                            \
+                if constexpr (std::is_same_v<GetType, int64_t>) {       \
+                    auto x = data[offset].template at<double>(pointer); \
+                    res[i] = !x.error() && (cmp);                       \
+                    continue;                                           \
+                }                                                       \
+                res[i] = false;                                         \
+                continue;                                               \
+            }                                                           \
+            res[i] = (cmp);                                             \
+        }                                                               \
     } while (false)
 
-#define BinaryArithRangeJSONCompareNotEqual(cmp)                   \
-    do {                                                           \
-        for (size_t i = 0; i < size; ++i) {                        \
-            if (valid_data != nullptr && !valid_data[i]) {         \
-                res[i] = false;                                    \
-                valid_res[i] = false;                              \
-                continue;                                          \
-            }                                                      \
-            auto x = data[i].template at<GetType>(pointer);        \
-            if (x.error()) {                                       \
-                if constexpr (std::is_same_v<GetType, int64_t>) {  \
-                    auto x = data[i].template at<double>(pointer); \
-                    res[i] = x.error() || (cmp);                   \
-                    continue;                                      \
-                }                                                  \
-                res[i] = true;                                     \
-                continue;                                          \
-            }                                                      \
-            res[i] = (cmp);                                        \
-        }                                                          \
+#define BinaryArithRangeJSONCompareNotEqual(cmp)                        \
+    do {                                                                \
+        for (size_t i = 0; i < size; ++i) {                             \
+            auto offset = (offsets) ? offsets[i] : i;                   \
+            if (valid_data != nullptr && !valid_data[offset]) {         \
+                res[i] = false;                                         \
+                valid_res[i] = false;                                   \
+                continue;                                               \
+            }                                                           \
+            auto x = data[offset].template at<GetType>(pointer);        \
+            if (x.error()) {                                            \
+                if constexpr (std::is_same_v<GetType, int64_t>) {       \
+                    auto x = data[offset].template at<double>(pointer); \
+                    res[i] = x.error() || (cmp);                        \
+                    continue;                                           \
+                }                                                       \
+                res[i] = true;                                          \
+                continue;                                               \
+            }                                                           \
+            res[i] = (cmp);                                             \
+        }                                                               \
     } while (false)
 
     auto execute_sub_batch = [op_type, arith_type](const milvus::Json* data,
                                                    const bool* valid_data,
+                                                   const int64_t* offsets,
                                                    const int size,
                                                    TargetBitmapView res,
                                                    TargetBitmapView valid_res,
@@ -513,13 +517,15 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForJson() {
                           op_type);
         }
     };
-    int64_t processed_size = ProcessDataChunks<milvus::Json>(execute_sub_batch,
-                                                             std::nullptr_t{},
-                                                             res,
-                                                             valid_res,
-                                                             value,
-                                                             right_operand,
-                                                             pointer);
+    int64_t processed_size =
+        ProcessDataByOffsets<milvus::Json>(execute_sub_batch,
+                                           std::nullptr_t{},
+                                           input,
+                                           res,
+                                           valid_res,
+                                           value,
+                                           right_operand,
+                                           pointer);
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",
@@ -530,7 +536,8 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForJson() {
 
 template <typename ValueType>
 VectorPtr
-PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForArray() {
+PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForArray(
+    ColumnVector* input) {
     using GetType = std::conditional_t<std::is_same_v<ValueType, std::string>,
                                        std::string_view,
                                        ValueType>;
@@ -556,25 +563,27 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForArray() {
             ? GetValueFromProto<ValueType>(expr_->right_operand_)
             : ValueType();
 
-#define BinaryArithRangeArrayCompare(cmp)                  \
-    do {                                                   \
-        for (size_t i = 0; i < size; ++i) {                \
-            if (valid_data != nullptr && !valid_data[i]) { \
-                res[i] = false;                            \
-                valid_res[i] = false;                      \
-                continue;                                  \
-            }                                              \
-            if (index >= data[i].length()) {               \
-                res[i] = false;                            \
-                continue;                                  \
-            }                                              \
-            auto value = data[i].get_data<GetType>(index); \
-            res[i] = (cmp);                                \
-        }                                                  \
+#define BinaryArithRangeArrayCompare(cmp)                       \
+    do {                                                        \
+        for (size_t i = 0; i < size; ++i) {                     \
+            auto offset = (offsets) ? offsets[i] : i;           \
+            if (valid_data != nullptr && !valid_data[offset]) { \
+                res[i] = false;                                 \
+                valid_res[i] = false;                           \
+                continue;                                       \
+            }                                                   \
+            if (index >= data[offset].length()) {               \
+                res[i] = false;                                 \
+                continue;                                       \
+            }                                                   \
+            auto value = data[offset].get_data<GetType>(index); \
+            res[i] = (cmp);                                     \
+        }                                                       \
     } while (false)
 
     auto execute_sub_batch = [op_type, arith_type](const ArrayView* data,
                                                    const bool* valid_data,
+                                                   const int64_t* offsets,
                                                    const int size,
                                                    TargetBitmapView res,
                                                    TargetBitmapView valid_res,
@@ -613,11 +622,12 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForArray() {
                     }
                     case proto::plan::ArithOpType::ArrayLength: {
                         for (size_t i = 0; i < size; ++i) {
-                            if (valid_data != nullptr && !valid_data[i]) {
+                            auto offset = (offsets) ? offsets[i] : i;
+                            if (valid_data != nullptr && !valid_data[offset]) {
                                 res[i] = valid_res[i] = false;
                                 continue;
                             }
-                            res[i] = data[i].length() == val;
+                            res[i] = data[offset].length() == val;
                         }
                         break;
                     }
@@ -660,11 +670,12 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForArray() {
                     }
                     case proto::plan::ArithOpType::ArrayLength: {
                         for (size_t i = 0; i < size; ++i) {
-                            if (valid_data != nullptr && !valid_data[i]) {
+                            auto offset = (offsets) ? offsets[i] : i;
+                            if (valid_data != nullptr && !valid_data[offset]) {
                                 res[i] = valid_res[i] = false;
                                 continue;
                             }
-                            res[i] = data[i].length() != val;
+                            res[i] = data[offset].length() != val;
                         }
                         break;
                     }
@@ -707,11 +718,12 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForArray() {
                     }
                     case proto::plan::ArithOpType::ArrayLength: {
                         for (size_t i = 0; i < size; ++i) {
-                            if (valid_data != nullptr && !valid_data[i]) {
+                            auto offset = (offsets) ? offsets[i] : i;
+                            if (valid_data != nullptr && !valid_data[offset]) {
                                 res[i] = valid_res[i] = false;
                                 continue;
                             }
-                            res[i] = data[i].length() > val;
+                            res[i] = data[offset].length() > val;
                         }
                         break;
                     }
@@ -754,11 +766,12 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForArray() {
                     }
                     case proto::plan::ArithOpType::ArrayLength: {
                         for (size_t i = 0; i < size; ++i) {
-                            if (valid_data != nullptr && !valid_data[i]) {
+                            auto offset = (offsets) ? offsets[i] : i;
+                            if (valid_data != nullptr && !valid_data[offset]) {
                                 res[i] = valid_res[i] = false;
                                 continue;
                             }
-                            res[i] = data[i].length() >= val;
+                            res[i] = data[offset].length() >= val;
                         }
                         break;
                     }
@@ -801,11 +814,12 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForArray() {
                     }
                     case proto::plan::ArithOpType::ArrayLength: {
                         for (size_t i = 0; i < size; ++i) {
-                            if (valid_data != nullptr && !valid_data[i]) {
+                            auto offset = (offsets) ? offsets[i] : i;
+                            if (valid_data != nullptr && !valid_data[offset]) {
                                 res[i] = valid_res[i] = false;
                                 continue;
                             }
-                            res[i] = data[i].length() < val;
+                            res[i] = data[offset].length() < val;
                         }
                         break;
                     }
@@ -848,11 +862,12 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForArray() {
                     }
                     case proto::plan::ArithOpType::ArrayLength: {
                         for (size_t i = 0; i < size; ++i) {
-                            if (valid_data != nullptr && !valid_data[i]) {
+                            auto offset = (offsets) ? offsets[i] : i;
+                            if (valid_data != nullptr && !valid_data[offset]) {
                                 res[i] = valid_res[i] = false;
                                 continue;
                             }
-                            res[i] = data[i].length() <= val;
+                            res[i] = data[offset].length() <= val;
                         }
                         break;
                     }
@@ -874,13 +889,14 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForArray() {
     };
 
     int64_t processed_size =
-        ProcessDataChunks<milvus::ArrayView>(execute_sub_batch,
-                                             std::nullptr_t{},
-                                             res,
-                                             valid_res,
-                                             value,
-                                             right_operand,
-                                             index);
+        ProcessDataByOffsets<milvus::ArrayView>(execute_sub_batch,
+                                                std::nullptr_t{},
+                                                input,
+                                                res,
+                                                valid_res,
+                                                value,
+                                                right_operand,
+                                                index);
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",
@@ -1281,7 +1297,8 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForIndex() {
 
 template <typename T>
 VectorPtr
-PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForData(ColumnVector* input) {
+PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForData(
+    ColumnVector* input) {
     typedef std::conditional_t<std::is_integral_v<T> &&
                                    !std::is_same_v<bool, T>,
                                int64_t,
@@ -1303,55 +1320,58 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForData(ColumnVector* input) 
 
     auto op_type = expr_->op_type_;
     auto arith_type = expr_->arith_op_type_;
+
     auto execute_sub_batch = [op_type, arith_type](
                                  const T* data,
                                  const bool* valid_data,
+                                 const int64_t* offsets,
                                  const int size,
                                  TargetBitmapView res,
                                  TargetBitmapView valid_res,
                                  HighPrecisionType value,
                                  HighPrecisionType right_operand) {
+
+#define ArithOp(T, comp_op, arith_op)                                        \
+    do {                                                                     \
+        if (offsets == nullptr) {                                            \
+            ArithOpElementFunc<T, comp_op, arith_op, FilterType::pre> func;  \
+            func(data, size, value, right_operand, res, offsets);            \
+        } else {                                                             \
+            ArithOpElementFunc<T, comp_op, arith_op, FilterType::post> func; \
+            func(data, size, value, right_operand, res, offsets);            \
+        }                                                                    \
+    } while (false)
         switch (op_type) {
             case proto::plan::OpType::Equal: {
                 switch (arith_type) {
                     case proto::plan::ArithOpType::Add: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::Equal,
-                                           proto::plan::ArithOpType::Add>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::Equal,
+                                proto::plan::ArithOpType::Add);
                         break;
                     }
                     case proto::plan::ArithOpType::Sub: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::Equal,
-                                           proto::plan::ArithOpType::Sub>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::Equal,
+                                proto::plan::ArithOpType::Sub);
                         break;
                     }
                     case proto::plan::ArithOpType::Mul: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::Equal,
-                                           proto::plan::ArithOpType::Mul>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::Equal,
+                                proto::plan::ArithOpType::Mul);
                         break;
                     }
                     case proto::plan::ArithOpType::Div: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::Equal,
-                                           proto::plan::ArithOpType::Div>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::Equal,
+                                proto::plan::ArithOpType::Div);
                         break;
                     }
                     case proto::plan::ArithOpType::Mod: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::Equal,
-                                           proto::plan::ArithOpType::Mod>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::Equal,
+                                proto::plan::ArithOpType::Mod);
                         break;
                     }
                     default:
@@ -1366,43 +1386,33 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForData(ColumnVector* input) 
             case proto::plan::OpType::NotEqual: {
                 switch (arith_type) {
                     case proto::plan::ArithOpType::Add: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::NotEqual,
-                                           proto::plan::ArithOpType::Add>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::NotEqual,
+                                proto::plan::ArithOpType::Add);
                         break;
                     }
                     case proto::plan::ArithOpType::Sub: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::NotEqual,
-                                           proto::plan::ArithOpType::Sub>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::NotEqual,
+                                proto::plan::ArithOpType::Sub);
                         break;
                     }
                     case proto::plan::ArithOpType::Mul: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::NotEqual,
-                                           proto::plan::ArithOpType::Mul>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::NotEqual,
+                                proto::plan::ArithOpType::Mul);
                         break;
                     }
                     case proto::plan::ArithOpType::Div: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::NotEqual,
-                                           proto::plan::ArithOpType::Div>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::NotEqual,
+                                proto::plan::ArithOpType::Div);
                         break;
                     }
                     case proto::plan::ArithOpType::Mod: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::NotEqual,
-                                           proto::plan::ArithOpType::Mod>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::NotEqual,
+                                proto::plan::ArithOpType::Mod);
                         break;
                     }
                     default:
@@ -1417,43 +1427,33 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForData(ColumnVector* input) 
             case proto::plan::OpType::GreaterThan: {
                 switch (arith_type) {
                     case proto::plan::ArithOpType::Add: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::GreaterThan,
-                                           proto::plan::ArithOpType::Add>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::GreaterThan,
+                                proto::plan::ArithOpType::Add);
                         break;
                     }
                     case proto::plan::ArithOpType::Sub: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::GreaterThan,
-                                           proto::plan::ArithOpType::Sub>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::GreaterThan,
+                                proto::plan::ArithOpType::Sub);
                         break;
                     }
                     case proto::plan::ArithOpType::Mul: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::GreaterThan,
-                                           proto::plan::ArithOpType::Mul>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::GreaterThan,
+                                proto::plan::ArithOpType::Mul);
                         break;
                     }
                     case proto::plan::ArithOpType::Div: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::GreaterThan,
-                                           proto::plan::ArithOpType::Div>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::GreaterThan,
+                                proto::plan::ArithOpType::Div);
                         break;
                     }
                     case proto::plan::ArithOpType::Mod: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::GreaterThan,
-                                           proto::plan::ArithOpType::Mod>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::GreaterThan,
+                                proto::plan::ArithOpType::Mod);
                         break;
                     }
                     default:
@@ -1468,43 +1468,33 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForData(ColumnVector* input) 
             case proto::plan::OpType::GreaterEqual: {
                 switch (arith_type) {
                     case proto::plan::ArithOpType::Add: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::GreaterEqual,
-                                           proto::plan::ArithOpType::Add>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::GreaterEqual,
+                                proto::plan::ArithOpType::Add);
                         break;
                     }
                     case proto::plan::ArithOpType::Sub: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::GreaterEqual,
-                                           proto::plan::ArithOpType::Sub>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::GreaterEqual,
+                                proto::plan::ArithOpType::Sub);
                         break;
                     }
                     case proto::plan::ArithOpType::Mul: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::GreaterEqual,
-                                           proto::plan::ArithOpType::Mul>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::GreaterEqual,
+                                proto::plan::ArithOpType::Mul);
                         break;
                     }
                     case proto::plan::ArithOpType::Div: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::GreaterEqual,
-                                           proto::plan::ArithOpType::Div>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::GreaterEqual,
+                                proto::plan::ArithOpType::Div);
                         break;
                     }
                     case proto::plan::ArithOpType::Mod: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::GreaterEqual,
-                                           proto::plan::ArithOpType::Mod>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::GreaterEqual,
+                                proto::plan::ArithOpType::Mod);
                         break;
                     }
                     default:
@@ -1519,43 +1509,33 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForData(ColumnVector* input) 
             case proto::plan::OpType::LessThan: {
                 switch (arith_type) {
                     case proto::plan::ArithOpType::Add: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::LessThan,
-                                           proto::plan::ArithOpType::Add>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::LessThan,
+                                proto::plan::ArithOpType::Add);
                         break;
                     }
                     case proto::plan::ArithOpType::Sub: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::LessThan,
-                                           proto::plan::ArithOpType::Sub>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::LessThan,
+                                proto::plan::ArithOpType::Sub);
                         break;
                     }
                     case proto::plan::ArithOpType::Mul: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::LessThan,
-                                           proto::plan::ArithOpType::Mul>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::LessThan,
+                                proto::plan::ArithOpType::Mul);
                         break;
                     }
                     case proto::plan::ArithOpType::Div: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::LessThan,
-                                           proto::plan::ArithOpType::Div>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::LessThan,
+                                proto::plan::ArithOpType::Div);
                         break;
                     }
                     case proto::plan::ArithOpType::Mod: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::LessThan,
-                                           proto::plan::ArithOpType::Mod>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::LessThan,
+                                proto::plan::ArithOpType::Mod);
                         break;
                     }
                     default:
@@ -1570,43 +1550,33 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForData(ColumnVector* input) 
             case proto::plan::OpType::LessEqual: {
                 switch (arith_type) {
                     case proto::plan::ArithOpType::Add: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::LessEqual,
-                                           proto::plan::ArithOpType::Add>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::LessEqual,
+                                proto::plan::ArithOpType::Add);
                         break;
                     }
                     case proto::plan::ArithOpType::Sub: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::LessEqual,
-                                           proto::plan::ArithOpType::Sub>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::LessEqual,
+                                proto::plan::ArithOpType::Sub);
                         break;
                     }
                     case proto::plan::ArithOpType::Mul: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::LessEqual,
-                                           proto::plan::ArithOpType::Mul>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::LessEqual,
+                                proto::plan::ArithOpType::Mul);
                         break;
                     }
                     case proto::plan::ArithOpType::Div: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::LessEqual,
-                                           proto::plan::ArithOpType::Div>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::LessEqual,
+                                proto::plan::ArithOpType::Div);
                         break;
                     }
                     case proto::plan::ArithOpType::Mod: {
-                        ArithOpElementFunc<T,
-                                           proto::plan::OpType::LessEqual,
-                                           proto::plan::ArithOpType::Mod>
-                            func;
-                        func(data, size, value, right_operand, res);
+                        ArithOp(T,
+                                proto::plan::OpType::LessEqual,
+                                proto::plan::ArithOpType::Mod);
                         break;
                     }
                     default:
@@ -1629,18 +1599,20 @@ PhyBinaryArithOpEvalRangeExpr::ExecRangeVisitorImplForData(ColumnVector* input) 
         // but to mask res with valid_data after the batch operation.
         if (valid_data != nullptr) {
             for (int i = 0; i < size; i++) {
-                if (!valid_data[i]) {
+                auto offset = (offsets) ? offsets[i] : i;
+                if (!valid_data[offset]) {
                     res[i] = valid_res[i] = false;
                 }
             }
         }
     };
-    int64_t processed_size = ProcessDataChunks<T>(execute_sub_batch,
-                                                  std::nullptr_t{},
-                                                  res,
-                                                  valid_res,
-                                                  value,
-                                                  right_operand);
+    int64_t processed_size = ProcessDataByOffsets<T>(execute_sub_batch,
+                                                     std::nullptr_t{},
+                                                     input,
+                                                     res,
+                                                     valid_res,
+                                                     value,
+                                                     right_operand);
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",

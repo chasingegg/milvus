@@ -21,6 +21,7 @@ namespace exec {
 
 void
 PhyAlwaysTrueExpr::Eval(EvalCtx& context, VectorPtr& result) {
+    auto input = context.get_input();
     int64_t real_batch_size = current_pos_ + batch_size_ >= active_count_
                                   ? active_count_ - current_pos_
                                   : batch_size_;
@@ -29,6 +30,10 @@ PhyAlwaysTrueExpr::Eval(EvalCtx& context, VectorPtr& result) {
     if (real_batch_size == 0) {
         result = nullptr;
         return;
+    }
+
+    if (input != nullptr) {
+        real_batch_size = input->size();
     }
 
     auto res_vec = std::make_shared<ColumnVector>(
