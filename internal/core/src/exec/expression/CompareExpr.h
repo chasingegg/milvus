@@ -297,6 +297,76 @@ class PhyCompareFilterExpr : public Expr {
 
     template <typename T, typename U, typename FUNC, typename... ValTypes>
     int64_t
+    ProcessBothDataByOffsets(FUNC func,
+                             OffsetVector* input,
+                             TargetBitmapView res,
+                             TargetBitmapView valid_res,
+                             ValTypes... values) {
+        int64_t size = input->size();
+        int64_t processed_size = 0;
+        if (segment_->is_chunked()) {
+            for (auto i = 0; i < size; ++i) {
+                auto offset = (*input)[i];
+                auto [left_chunk_id, left_chunk_offset] =
+                    segment_->get_chunk_by_offset(left_field_, offset);
+                auto left_chunk =
+                    segment_->chunk_data<T>(left_field_, left_chunk_id);
+                auto [right_chunk_id, right_chunk_offset] =
+                    segment_->get_chunk_by_offset(right_field_, offset);
+                auto right_chunk =
+                    segment_->chunk_data<U>(right_field_, right_chunk_id);
+                const T* left_data = left_chunk.data() + left_chunk_offset;
+                const U* right_data = right_chunk.data() + right_chunk_offset;
+                func(left_data,
+                     right_data,
+                     nullptr,
+                     1,
+                     res + processed_size,
+                     values...);
+                const bool* left_valid_data = left_chunk.valid_data();
+                const bool* right_valid_data = right_chunk.valid_data();
+                // mask with valid_data
+                if (left_valid_data && !left_valid_data[left_chunk_offset]) {
+                    res[processed_size] = false;
+                    valid_res[processed_size] = false;
+                    continue;
+                }
+                if (right_valid_data && !right_valid_data[right_chunk_offset]) {
+                    res[processed_size] = false;
+                    valid_res[processed_size] = false;
+                }
+                processed_size++;
+            }
+            return processed_size;
+        } else {
+            auto left_chunk = segment_->chunk_data<T>(left_field_, 0);
+            // auto [right_chunk_id, right_chunk_offset] =
+            //     segment_->get_chunk_by_offset(right_field_, offset);
+            auto right_chunk = segment_->chunk_data<U>(right_field_, 0);
+            const T* left_data = left_chunk.data();
+            const U* right_data = right_chunk.data();
+            func(left_data, right_data, input->data(), size, res, values...);
+            const bool* left_valid_data = left_chunk.valid_data();
+            const bool* right_valid_data = right_chunk.valid_data();
+            // mask with valid_data
+            for (int i = 0; i < size; ++i) {
+                if (left_valid_data && !left_valid_data[(*input)[i]]) {
+                    res[i] = false;
+                    valid_res[i] = false;
+                    continue;
+                }
+                if (right_valid_data && !right_valid_data[(*input)[i]]) {
+                    res[i] = false;
+                    valid_res[i] = false;
+                }
+            }
+            processed_size += size;
+            return processed_size;
+        }
+    }
+
+    template <typename T, typename U, typename FUNC, typename... ValTypes>
+    int64_t
     ProcessBothDataChunksForSingleChunk(FUNC func,
                                         TargetBitmapView res,
                                         TargetBitmapView valid_res,

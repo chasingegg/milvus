@@ -586,9 +586,11 @@ PhyCompareFilterExpr::ExecCompareRightType(OffsetVector* input) {
     };
     int64_t processed_size;
     if (has_input_) {
-        processed_size = ProcessBothDataChunks<T, U>(
+        processed_size = ProcessBothDataByOffsets<T, U>(
             execute_sub_batch, input, res, valid_res);
     } else {
+        processed_size = ProcessBothDataChunks<T, U>(
+            execute_sub_batch, input, res, valid_res);
     }
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
