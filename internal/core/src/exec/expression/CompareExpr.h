@@ -55,6 +55,8 @@ struct CompareElementFunc {
                size_t size,
                TargetBitmapView res,
                const int64_t* offsets = nullptr) {
+        // This is the original code, kept here for the documentation purposes
+        // also, used for post filter
         if constexpr (filter_type == FilterType::post) {
             for (int i = 0; i < size; ++i) {
                 auto offset = (offsets != nullptr) ? offsets[i] : i;
@@ -80,30 +82,6 @@ struct CompareElementFunc {
             }
             return;
         }
-
-        /*
-        // This is the original code, kept here for the documentation purposes
-        for (int i = 0; i < size; ++i) {
-            if constexpr (op == proto::plan::OpType::Equal) {
-                res[i] = left[i] == right[i];
-            } else if constexpr (op == proto::plan::OpType::NotEqual) {
-                res[i] = left[i] != right[i];
-            } else if constexpr (op == proto::plan::OpType::GreaterThan) {
-                res[i] = left[i] > right[i];
-            } else if constexpr (op == proto::plan::OpType::LessThan) {
-                res[i] = left[i] < right[i];
-            } else if constexpr (op == proto::plan::OpType::GreaterEqual) {
-                res[i] = left[i] >= right[i];
-            } else if constexpr (op == proto::plan::OpType::LessEqual) {
-                res[i] = left[i] <= right[i];
-            } else {
-                PanicInfo(
-                    OpTypeInvalid,
-                    fmt::format("unsupported op_type:{} for CompareElementFunc",
-                                op));
-            }
-        }
-        */
 
         if constexpr (op == proto::plan::OpType::Equal) {
             res.inplace_compare_column<T, U, milvus::bitset::CompareOpType::EQ>(
@@ -181,10 +159,12 @@ class PhyCompareFilterExpr : public Expr {
 
     void
     MoveCursor() override {
-        if (segment_->is_chunked()) {
-            MoveCursorForMultipleChunk();
-        } else {
-            MoveCursorForSingleChunk();
+        if (!has_input_) {
+            if (segment_->is_chunked()) {
+                MoveCursorForMultipleChunk();
+            } else {
+                MoveCursorForSingleChunk();
+            }
         }
     }
 
@@ -299,7 +279,7 @@ class PhyCompareFilterExpr : public Expr {
     template <typename T, typename U, typename FUNC, typename... ValTypes>
     int64_t
     ProcessBothDataChunks(FUNC func,
-                          ColumnVector* input,
+                          OffsetVector* input,
                           TargetBitmapView res,
                           TargetBitmapView valid_res,
                           ValTypes... values) {
@@ -458,15 +438,15 @@ class PhyCompareFilterExpr : public Expr {
     ExecCompareExprDispatcherForHybridSegment();
 
     VectorPtr
-    ExecCompareExprDispatcherForBothDataSegment(ColumnVector* input);
+    ExecCompareExprDispatcherForBothDataSegment(OffsetVector* input);
 
     template <typename T>
     VectorPtr
-    ExecCompareLeftType(ColumnVector* input);
+    ExecCompareLeftType(OffsetVector* input);
 
     template <typename T, typename U>
     VectorPtr
-    ExecCompareRightType(ColumnVector* input);
+    ExecCompareRightType(OffsetVector* input);
 
  private:
     const FieldId left_field_;

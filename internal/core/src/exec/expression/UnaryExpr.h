@@ -319,23 +319,23 @@ class PhyUnaryRangeFilterExpr : public SegmentExpr {
  private:
     template <typename T>
     VectorPtr
-    ExecRangeVisitorImpl(ColumnVector* input);
+    ExecRangeVisitorImpl(OffsetVector* input);
 
     template <typename T>
     VectorPtr
     ExecRangeVisitorImplForIndex();
 
-    template <typename T, FilterType filter_type>
+    template <typename T>
     VectorPtr
-    ExecRangeVisitorImplForData(ColumnVector* input);
+    ExecRangeVisitorImplForData(OffsetVector* input);
 
     template <typename ExprValueType>
     VectorPtr
-    ExecRangeVisitorImplJson(ColumnVector* input);
+    ExecRangeVisitorImplJson(OffsetVector* input);
 
-    template <typename ExprValueType, FilterType filter_type>
+    template <typename ExprValueType>
     VectorPtr
-    ExecRangeVisitorImplArray(ColumnVector* input);
+    ExecRangeVisitorImplArray(OffsetVector* input);
 
     template <typename T>
     VectorPtr

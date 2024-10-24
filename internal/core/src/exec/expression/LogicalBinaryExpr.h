@@ -75,8 +75,10 @@ class PhyLogicalBinaryExpr : public Expr {
 
     void
     MoveCursor() override {
-        inputs_[0]->MoveCursor();
-        inputs_[1]->MoveCursor();
+        if (!has_input_) {
+            inputs_[0]->MoveCursor();
+            inputs_[1]->MoveCursor();
+        }
     }
 
  private:

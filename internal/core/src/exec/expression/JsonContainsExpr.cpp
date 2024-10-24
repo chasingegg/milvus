@@ -24,9 +24,10 @@ namespace exec {
 void
 PhyJsonContainsFilterExpr::Eval(EvalCtx& context, VectorPtr& result) {
     auto input = context.get_input();
+    SetHasInput((input != nullptr));
     switch (expr_->column_.data_type_) {
         case DataType::ARRAY: {
-            if (is_index_mode_) {
+            if (is_index_mode_ && !has_input_) {
                 result = EvalArrayContainsForIndexSegment();
             } else {
                 result = EvalJsonContainsForDataSegment(input);
@@ -34,7 +35,7 @@ PhyJsonContainsFilterExpr::Eval(EvalCtx& context, VectorPtr& result) {
             break;
         }
         case DataType::JSON: {
-            if (is_index_mode_) {
+            if (is_index_mode_ && !has_input_) {
                 PanicInfo(
                     ExprInvalid,
                     "exists expr for json or array index mode not supported");
@@ -50,7 +51,7 @@ PhyJsonContainsFilterExpr::Eval(EvalCtx& context, VectorPtr& result) {
 }
 
 VectorPtr
-PhyJsonContainsFilterExpr::EvalJsonContainsForDataSegment(ColumnVector* input) {
+PhyJsonContainsFilterExpr::EvalJsonContainsForDataSegment(OffsetVector* input) {
     auto data_type = expr_->column_.data_type_;
     switch (expr_->op_) {
         case proto::plan::JSONContainsExpr_JSONOp_Contains:
@@ -163,12 +164,12 @@ PhyJsonContainsFilterExpr::EvalJsonContainsForDataSegment(ColumnVector* input) {
 
 template <typename ExprValueType>
 VectorPtr
-PhyJsonContainsFilterExpr::ExecArrayContains(ColumnVector* input) {
+PhyJsonContainsFilterExpr::ExecArrayContains(OffsetVector* input) {
     using GetType =
         std::conditional_t<std::is_same_v<ExprValueType, std::string>,
                            std::string_view,
                            ExprValueType>;
-    auto real_batch_size = GetNextBatchSize();
+    auto real_batch_size = has_input_ ? input->size() : GetNextBatchSize();
     if (real_batch_size == 0) {
         return nullptr;
     }
@@ -185,13 +186,14 @@ PhyJsonContainsFilterExpr::ExecArrayContains(ColumnVector* input) {
     for (auto const& element : expr_->vals_) {
         elements.insert(GetValueFromProto<GetType>(element));
     }
-    auto execute_sub_batch = [](const milvus::ArrayView* data,
-                                const bool* valid_data,
-                                const int64_t* offsets,
-                                const int size,
-                                TargetBitmapView res,
-                                TargetBitmapView valid_res,
-                                const std::unordered_set<GetType>& elements) {
+    auto execute_sub_batch = [this](
+                                 const milvus::ArrayView* data,
+                                 const bool* valid_data,
+                                 const int64_t* offsets,
+                                 const int size,
+                                 TargetBitmapView res,
+                                 TargetBitmapView valid_res,
+                                 const std::unordered_set<GetType>& elements) {
         auto executor = [&](size_t i) {
             const auto& array = data[i];
             for (int j = 0; j < array.length(); ++j) {
@@ -202,7 +204,7 @@ PhyJsonContainsFilterExpr::ExecArrayContains(ColumnVector* input) {
             return false;
         };
         for (int i = 0; i < size; ++i) {
-            auto offset = (offsets) ? offsets[i] : i;
+            auto offset = (has_input_) ? offsets[i] : i;
             if (valid_data != nullptr && !valid_data[offset]) {
                 res[i] = valid_res[i] = false;
                 continue;
@@ -211,8 +213,19 @@ PhyJsonContainsFilterExpr::ExecArrayContains(ColumnVector* input) {
         }
     };
 
-    int64_t processed_size = ProcessDataByOffsets<milvus::ArrayView>(
-        execute_sub_batch, std::nullptr_t{}, input, res, valid_res, elements);
+    int64_t processed_size;
+    if (has_input_) {
+        processed_size =
+            ProcessDataByOffsets<milvus::ArrayView>(execute_sub_batch,
+                                                    std::nullptr_t{},
+                                                    input,
+                                                    res,
+                                                    valid_res,
+                                                    elements);
+    } else {
+        processed_size = ProcessDataChunks<milvus::ArrayView>(
+            execute_sub_batch, std::nullptr_t{}, res, valid_res, elements);
+    }
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",
@@ -223,12 +236,12 @@ PhyJsonContainsFilterExpr::ExecArrayContains(ColumnVector* input) {
 
 template <typename ExprValueType>
 VectorPtr
-PhyJsonContainsFilterExpr::ExecJsonContains(ColumnVector* input) {
+PhyJsonContainsFilterExpr::ExecJsonContains(OffsetVector* input) {
     using GetType =
         std::conditional_t<std::is_same_v<ExprValueType, std::string>,
                            std::string_view,
                            ExprValueType>;
-    auto real_batch_size = GetNextBatchSize();
+    auto real_batch_size = has_input_ ? input->size() : GetNextBatchSize();
     if (real_batch_size == 0) {
         return nullptr;
     }
@@ -244,14 +257,15 @@ PhyJsonContainsFilterExpr::ExecJsonContains(ColumnVector* input) {
     for (auto const& element : expr_->vals_) {
         elements.insert(GetValueFromProto<GetType>(element));
     }
-    auto execute_sub_batch = [](const milvus::Json* data,
-                                const bool* valid_data,
-                                const int64_t* offsets,
-                                const int size,
-                                TargetBitmapView res,
-                                TargetBitmapView valid_res,
-                                const std::string& pointer,
-                                const std::unordered_set<GetType>& elements) {
+    auto execute_sub_batch = [this](
+                                 const milvus::Json* data,
+                                 const bool* valid_data,
+                                 const int64_t* offsets,
+                                 const int size,
+                                 TargetBitmapView res,
+                                 TargetBitmapView valid_res,
+                                 const std::string& pointer,
+                                 const std::unordered_set<GetType>& elements) {
         auto executor = [&](size_t i) {
             auto doc = data[i].doc();
             auto array = doc.at_pointer(pointer).get_array();
@@ -270,7 +284,7 @@ PhyJsonContainsFilterExpr::ExecJsonContains(ColumnVector* input) {
             return false;
         };
         for (size_t i = 0; i < size; ++i) {
-            auto offset = (offsets) ? offsets[i] : i;
+            auto offset = (has_input_) ? offsets[i] : i;
             if (valid_data != nullptr && !valid_data[offset]) {
                 res[i] = valid_res[i] = false;
                 continue;
@@ -279,13 +293,23 @@ PhyJsonContainsFilterExpr::ExecJsonContains(ColumnVector* input) {
         }
     };
 
-    int64_t processed_size = ProcessDataByOffsets<Json>(execute_sub_batch,
-                                                        std::nullptr_t{},
-                                                        input,
-                                                        res,
-                                                        valid_res,
-                                                        pointer,
-                                                        elements);
+    int64_t processed_size;
+    if (has_input_) {
+        processed_size = ProcessDataByOffsets<Json>(execute_sub_batch,
+                                                    std::nullptr_t{},
+                                                    input,
+                                                    res,
+                                                    valid_res,
+                                                    pointer,
+                                                    elements);
+    } else {
+        processed_size = ProcessDataChunks<Json>(execute_sub_batch,
+                                                 std::nullptr_t{},
+                                                 res,
+                                                 valid_res,
+                                                 pointer,
+                                                 elements);
+    }
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",
@@ -295,8 +319,8 @@ PhyJsonContainsFilterExpr::ExecJsonContains(ColumnVector* input) {
 }
 
 VectorPtr
-PhyJsonContainsFilterExpr::ExecJsonContainsArray(ColumnVector* input) {
-    auto real_batch_size = GetNextBatchSize();
+PhyJsonContainsFilterExpr::ExecJsonContainsArray(OffsetVector* input) {
+    auto real_batch_size = has_input_ ? input->size() : GetNextBatchSize();
     if (real_batch_size == 0) {
         return nullptr;
     }
@@ -313,14 +337,14 @@ PhyJsonContainsFilterExpr::ExecJsonContainsArray(ColumnVector* input) {
         elements.emplace_back(GetValueFromProto<proto::plan::Array>(element));
     }
     auto execute_sub_batch =
-        [](const milvus::Json* data,
-           const bool* valid_data,
-           const int64_t* offsets,
-           const int size,
-           TargetBitmapView res,
-           TargetBitmapView valid_res,
-           const std::string& pointer,
-           const std::vector<proto::plan::Array>& elements) {
+        [this](const milvus::Json* data,
+               const bool* valid_data,
+               const int64_t* offsets,
+               const int size,
+               TargetBitmapView res,
+               TargetBitmapView valid_res,
+               const std::string& pointer,
+               const std::vector<proto::plan::Array>& elements) {
             auto executor = [&](size_t i) -> bool {
                 auto doc = data[i].doc();
                 auto array = doc.at_pointer(pointer).get_array();
@@ -348,7 +372,7 @@ PhyJsonContainsFilterExpr::ExecJsonContainsArray(ColumnVector* input) {
                 return false;
             };
             for (size_t i = 0; i < size; ++i) {
-                auto offset = (offsets) ? offsets[i] : i;
+                auto offset = (has_input_) ? offsets[i] : i;
                 if (valid_data != nullptr && !valid_data[offset]) {
                     res[i] = valid_res[i] = false;
                     continue;
@@ -357,14 +381,23 @@ PhyJsonContainsFilterExpr::ExecJsonContainsArray(ColumnVector* input) {
             }
         };
 
-    int64_t processed_size =
-        ProcessDataByOffsets<milvus::Json>(execute_sub_batch,
-                                           std::nullptr_t{},
-                                           input,
-                                           res,
-                                           valid_res,
-                                           pointer,
-                                           elements);
+    int64_t processed_size;
+    if (has_input_) {
+        processed_size = ProcessDataByOffsets<milvus::Json>(execute_sub_batch,
+                                                            std::nullptr_t{},
+                                                            input,
+                                                            res,
+                                                            valid_res,
+                                                            pointer,
+                                                            elements);
+    } else {
+        processed_size = ProcessDataChunks<milvus::Json>(execute_sub_batch,
+                                                         std::nullptr_t{},
+                                                         res,
+                                                         valid_res,
+                                                         pointer,
+                                                         elements);
+    }
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",
@@ -375,14 +408,14 @@ PhyJsonContainsFilterExpr::ExecJsonContainsArray(ColumnVector* input) {
 
 template <typename ExprValueType>
 VectorPtr
-PhyJsonContainsFilterExpr::ExecArrayContainsAll(ColumnVector* input) {
+PhyJsonContainsFilterExpr::ExecArrayContainsAll(OffsetVector* input) {
     using GetType =
         std::conditional_t<std::is_same_v<ExprValueType, std::string>,
                            std::string_view,
                            ExprValueType>;
     AssertInfo(expr_->column_.nested_path_.size() == 0,
                "[ExecArrayContainsAll]nested path must be null");
-    auto real_batch_size = GetNextBatchSize();
+    auto real_batch_size = has_input_ ? input->size() : GetNextBatchSize();
     if (real_batch_size == 0) {
         return nullptr;
     }
@@ -398,13 +431,14 @@ PhyJsonContainsFilterExpr::ExecArrayContainsAll(ColumnVector* input) {
         elements.insert(GetValueFromProto<GetType>(element));
     }
 
-    auto execute_sub_batch = [](const milvus::ArrayView* data,
-                                const bool* valid_data,
-                                const int64_t* offsets,
-                                const int size,
-                                TargetBitmapView res,
-                                TargetBitmapView valid_res,
-                                const std::unordered_set<GetType>& elements) {
+    auto execute_sub_batch = [this](
+                                 const milvus::ArrayView* data,
+                                 const bool* valid_data,
+                                 const int64_t* offsets,
+                                 const int size,
+                                 TargetBitmapView res,
+                                 TargetBitmapView valid_res,
+                                 const std::unordered_set<GetType>& elements) {
         auto executor = [&](size_t i) {
             std::unordered_set<GetType> tmp_elements(elements);
             // Note: array can only be iterated once
@@ -417,7 +451,7 @@ PhyJsonContainsFilterExpr::ExecArrayContainsAll(ColumnVector* input) {
             return tmp_elements.size() == 0;
         };
         for (int i = 0; i < size; ++i) {
-            auto offset = (offsets) ? offsets[i] : i;
+            auto offset = (has_input_) ? offsets[i] : i;
             if (valid_data != nullptr && !valid_data[offset]) {
                 res[i] = valid_res[i] = false;
                 continue;
@@ -426,8 +460,19 @@ PhyJsonContainsFilterExpr::ExecArrayContainsAll(ColumnVector* input) {
         }
     };
 
-    int64_t processed_size = ProcessDataByOffsets<milvus::ArrayView>(
-        execute_sub_batch, std::nullptr_t{}, input, res, valid_res, elements);
+    int64_t processed_size;
+    if (has_input_) {
+        processed_size =
+            ProcessDataByOffsets<milvus::ArrayView>(execute_sub_batch,
+                                                    std::nullptr_t{},
+                                                    input,
+                                                    res,
+                                                    valid_res,
+                                                    elements);
+    } else {
+        processed_size = ProcessDataChunks<milvus::ArrayView>(
+            execute_sub_batch, std::nullptr_t{}, res, valid_res, elements);
+    }
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",
@@ -438,12 +483,12 @@ PhyJsonContainsFilterExpr::ExecArrayContainsAll(ColumnVector* input) {
 
 template <typename ExprValueType>
 VectorPtr
-PhyJsonContainsFilterExpr::ExecJsonContainsAll(ColumnVector* input) {
+PhyJsonContainsFilterExpr::ExecJsonContainsAll(OffsetVector* input) {
     using GetType =
         std::conditional_t<std::is_same_v<ExprValueType, std::string>,
                            std::string_view,
                            ExprValueType>;
-    auto real_batch_size = GetNextBatchSize();
+    auto real_batch_size = has_input_ ? input->size() : GetNextBatchSize();
     if (real_batch_size == 0) {
         return nullptr;
     }
@@ -460,14 +505,15 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAll(ColumnVector* input) {
         elements.insert(GetValueFromProto<GetType>(element));
     }
 
-    auto execute_sub_batch = [](const milvus::Json* data,
-                                const bool* valid_data,
-                                const int64_t* offsets,
-                                const int size,
-                                TargetBitmapView res,
-                                TargetBitmapView valid_res,
-                                const std::string& pointer,
-                                const std::unordered_set<GetType>& elements) {
+    auto execute_sub_batch = [this](
+                                 const milvus::Json* data,
+                                 const bool* valid_data,
+                                 const int64_t* offsets,
+                                 const int size,
+                                 TargetBitmapView res,
+                                 TargetBitmapView valid_res,
+                                 const std::string& pointer,
+                                 const std::unordered_set<GetType>& elements) {
         auto executor = [&](const size_t i) -> bool {
             auto doc = data[i].doc();
             auto array = doc.at_pointer(pointer).get_array();
@@ -489,7 +535,7 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAll(ColumnVector* input) {
             return tmp_elements.size() == 0;
         };
         for (size_t i = 0; i < size; ++i) {
-            auto offset = (offsets) ? offsets[i] : i;
+            auto offset = (has_input_) ? offsets[i] : i;
             if (valid_data != nullptr && !valid_data[offset]) {
                 res[i] = valid_res[i] = false;
                 continue;
@@ -498,13 +544,23 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAll(ColumnVector* input) {
         }
     };
 
-    int64_t processed_size = ProcessDataByOffsets<Json>(execute_sub_batch,
-                                                        std::nullptr_t{},
-                                                        input,
-                                                        res,
-                                                        valid_res,
-                                                        pointer,
-                                                        elements);
+    int64_t processed_size;
+    if (has_input_) {
+        processed_size = ProcessDataByOffsets<Json>(execute_sub_batch,
+                                                    std::nullptr_t{},
+                                                    input,
+                                                    res,
+                                                    valid_res,
+                                                    pointer,
+                                                    elements);
+    } else {
+        processed_size = ProcessDataChunks<Json>(execute_sub_batch,
+                                                 std::nullptr_t{},
+                                                 res,
+                                                 valid_res,
+                                                 pointer,
+                                                 elements);
+    }
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",
@@ -515,8 +571,8 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAll(ColumnVector* input) {
 
 VectorPtr
 PhyJsonContainsFilterExpr::ExecJsonContainsAllWithDiffType(
-    ColumnVector* input) {
-    auto real_batch_size = GetNextBatchSize();
+    OffsetVector* input) {
+    auto real_batch_size = has_input_ ? input->size() : GetNextBatchSize();
     if (real_batch_size == 0) {
         return nullptr;
     }
@@ -537,15 +593,15 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAllWithDiffType(
     }
 
     auto execute_sub_batch =
-        [](const milvus::Json* data,
-           const bool* valid_data,
-           const int64_t* offsets,
-           const int size,
-           TargetBitmapView res,
-           TargetBitmapView valid_res,
-           const std::string& pointer,
-           const std::vector<proto::plan::GenericValue>& elements,
-           const std::unordered_set<int> elements_index) {
+        [this](const milvus::Json* data,
+               const bool* valid_data,
+               const int64_t* offsets,
+               const int size,
+               TargetBitmapView res,
+               TargetBitmapView valid_res,
+               const std::string& pointer,
+               const std::vector<proto::plan::GenericValue>& elements,
+               const std::unordered_set<int> elements_index) {
             auto executor = [&](size_t i) -> bool {
                 const auto& json = data[i];
                 auto doc = json.doc();
@@ -627,7 +683,7 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAllWithDiffType(
                 return tmp_elements_index.size() == 0;
             };
             for (size_t i = 0; i < size; ++i) {
-                auto offset = (offsets) ? offsets[i] : i;
+                auto offset = (has_input_) ? offsets[i] : i;
                 if (valid_data != nullptr && !valid_data[offset]) {
                     res[i] = valid_res[i] = false;
                     continue;
@@ -636,14 +692,25 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAllWithDiffType(
             }
         };
 
-    int64_t processed_size = ProcessDataByOffsets<Json>(execute_sub_batch,
-                                                        std::nullptr_t{},
-                                                        input,
-                                                        res,
-                                                        valid_res,
-                                                        pointer,
-                                                        elements,
-                                                        elements_index);
+    int64_t processed_size;
+    if (has_input_) {
+        processed_size = ProcessDataByOffsets<Json>(execute_sub_batch,
+                                                    std::nullptr_t{},
+                                                    input,
+                                                    res,
+                                                    valid_res,
+                                                    pointer,
+                                                    elements,
+                                                    elements_index);
+    } else {
+        processed_size = ProcessDataChunks<Json>(execute_sub_batch,
+                                                 std::nullptr_t{},
+                                                 res,
+                                                 valid_res,
+                                                 pointer,
+                                                 elements,
+                                                 elements_index);
+    }
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",
@@ -653,8 +720,8 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAllWithDiffType(
 }
 
 VectorPtr
-PhyJsonContainsFilterExpr::ExecJsonContainsAllArray(ColumnVector* input) {
-    auto real_batch_size = GetNextBatchSize();
+PhyJsonContainsFilterExpr::ExecJsonContainsAllArray(OffsetVector* input) {
+    auto real_batch_size = has_input_ ? input->size() : GetNextBatchSize();
     if (real_batch_size == 0) {
         return nullptr;
     }
@@ -672,14 +739,14 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAllArray(ColumnVector* input) {
         elements.emplace_back(GetValueFromProto<proto::plan::Array>(element));
     }
     auto execute_sub_batch =
-        [](const milvus::Json* data,
-           const bool* valid_data,
-           const int64_t* offsets,
-           const int size,
-           TargetBitmapView res,
-           TargetBitmapView valid_res,
-           const std::string& pointer,
-           const std::vector<proto::plan::Array>& elements) {
+        [this](const milvus::Json* data,
+               const bool* valid_data,
+               const int64_t* offsets,
+               const int size,
+               TargetBitmapView res,
+               TargetBitmapView valid_res,
+               const std::string& pointer,
+               const std::vector<proto::plan::Array>& elements) {
             auto executor = [&](const size_t i) {
                 auto doc = data[i].doc();
                 auto array = doc.at_pointer(pointer).get_array();
@@ -711,7 +778,7 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAllArray(ColumnVector* input) {
                 return exist_elements_index.size() == elements.size();
             };
             for (size_t i = 0; i < size; ++i) {
-                auto offset = (offsets) ? offsets[i] : i;
+                auto offset = (has_input_) ? offsets[i] : i;
                 if (valid_data != nullptr && !valid_data[offset]) {
                     res[i] = valid_res[i] = false;
                     continue;
@@ -720,13 +787,23 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAllArray(ColumnVector* input) {
             }
         };
 
-    int64_t processed_size = ProcessDataByOffsets<Json>(execute_sub_batch,
-                                                        std::nullptr_t{},
-                                                        input,
-                                                        res,
-                                                        valid_res,
-                                                        pointer,
-                                                        elements);
+    int64_t processed_size;
+    if (has_input_) {
+        processed_size = ProcessDataByOffsets<Json>(execute_sub_batch,
+                                                    std::nullptr_t{},
+                                                    input,
+                                                    res,
+                                                    valid_res,
+                                                    pointer,
+                                                    elements);
+    } else {
+        processed_size = ProcessDataChunks<Json>(execute_sub_batch,
+                                                 std::nullptr_t{},
+                                                 res,
+                                                 valid_res,
+                                                 pointer,
+                                                 elements);
+    }
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",
@@ -736,8 +813,8 @@ PhyJsonContainsFilterExpr::ExecJsonContainsAllArray(ColumnVector* input) {
 }
 
 VectorPtr
-PhyJsonContainsFilterExpr::ExecJsonContainsWithDiffType(ColumnVector* input) {
-    auto real_batch_size = GetNextBatchSize();
+PhyJsonContainsFilterExpr::ExecJsonContainsWithDiffType(OffsetVector* input) {
+    auto real_batch_size = has_input_ ? input->size() : GetNextBatchSize();
     if (real_batch_size == 0) {
         return nullptr;
     }
@@ -759,14 +836,14 @@ PhyJsonContainsFilterExpr::ExecJsonContainsWithDiffType(ColumnVector* input) {
     }
 
     auto execute_sub_batch =
-        [](const milvus::Json* data,
-           const bool* valid_data,
-           const int64_t* offsets,
-           const int size,
-           TargetBitmapView res,
-           TargetBitmapView valid_res,
-           const std::string& pointer,
-           const std::vector<proto::plan::GenericValue>& elements) {
+        [this](const milvus::Json* data,
+               const bool* valid_data,
+               const int64_t* offsets,
+               const int size,
+               TargetBitmapView res,
+               TargetBitmapView valid_res,
+               const std::string& pointer,
+               const std::vector<proto::plan::GenericValue>& elements) {
             auto executor = [&](const size_t i) {
                 auto& json = data[i];
                 auto doc = json.doc();
@@ -840,7 +917,7 @@ PhyJsonContainsFilterExpr::ExecJsonContainsWithDiffType(ColumnVector* input) {
                 return false;
             };
             for (size_t i = 0; i < size; ++i) {
-                auto offset = (offsets) ? offsets[i] : i;
+                auto offset = (has_input_) ? offsets[i] : i;
                 if (valid_data != nullptr && !valid_data[offset]) {
                     res[i] = valid_res[i] = false;
                     continue;
@@ -849,13 +926,23 @@ PhyJsonContainsFilterExpr::ExecJsonContainsWithDiffType(ColumnVector* input) {
             }
         };
 
-    int64_t processed_size = ProcessDataByOffsets<Json>(execute_sub_batch,
-                                                        std::nullptr_t{},
-                                                        input,
-                                                        res,
-                                                        valid_res,
-                                                        pointer,
-                                                        elements);
+    int64_t processed_size;
+    if (has_input_) {
+        processed_size = ProcessDataByOffsets<Json>(execute_sub_batch,
+                                                    std::nullptr_t{},
+                                                    input,
+                                                    res,
+                                                    valid_res,
+                                                    pointer,
+                                                    elements);
+    } else {
+        processed_size = ProcessDataChunks<Json>(execute_sub_batch,
+                                                 std::nullptr_t{},
+                                                 res,
+                                                 valid_res,
+                                                 pointer,
+                                                 elements);
+    }
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",

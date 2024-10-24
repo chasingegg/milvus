@@ -125,7 +125,7 @@ PhyBinaryRangeFilterExpr::Eval(EvalCtx& context, VectorPtr& result) {
 
 template <typename T>
 VectorPtr
-PhyBinaryRangeFilterExpr::ExecRangeVisitorImpl(ColumnVector* input) {
+PhyBinaryRangeFilterExpr::ExecRangeVisitorImpl(OffsetVector* input) {
     if (is_index_mode_) {
         return ExecRangeVisitorImplForIndex<T>();
     } else {
@@ -223,7 +223,7 @@ PhyBinaryRangeFilterExpr::ExecRangeVisitorImplForIndex() {
 
 template <typename T>
 VectorPtr
-PhyBinaryRangeFilterExpr::ExecRangeVisitorImplForData(ColumnVector* input) {
+PhyBinaryRangeFilterExpr::ExecRangeVisitorImplForData(OffsetVector* input) {
     typedef std::
         conditional_t<std::is_same_v<T, std::string_view>, std::string, T>
             IndexInnerType;
@@ -337,7 +337,7 @@ PhyBinaryRangeFilterExpr::ExecRangeVisitorImplForData(ColumnVector* input) {
 
 template <typename ValueType>
 VectorPtr
-PhyBinaryRangeFilterExpr::ExecRangeVisitorImplForJson(ColumnVector* input) {
+PhyBinaryRangeFilterExpr::ExecRangeVisitorImplForJson(OffsetVector* input) {
     using GetType = std::conditional_t<std::is_same_v<ValueType, std::string>,
                                        std::string_view,
                                        ValueType>;
@@ -434,7 +434,7 @@ PhyBinaryRangeFilterExpr::ExecRangeVisitorImplForJson(ColumnVector* input) {
 
 template <typename ValueType>
 VectorPtr
-PhyBinaryRangeFilterExpr::ExecRangeVisitorImplForArray(ColumnVector* input) {
+PhyBinaryRangeFilterExpr::ExecRangeVisitorImplForArray(OffsetVector* input) {
     using GetType = std::conditional_t<std::is_same_v<ValueType, std::string>,
                                        std::string_view,
                                        ValueType>;
@@ -457,7 +457,7 @@ PhyBinaryRangeFilterExpr::ExecRangeVisitorImplForArray(ColumnVector* input) {
         index = std::stoi(expr_->column_.nested_path_[0]);
     }
 
-    auto execute_sub_batch = [lower_inclusive, upper_inclusive](
+    auto execute_sub_batch = [lower_inclusive, upper_inclusive, this](
                                  const milvus::ArrayView* data,
                                  const bool* valid_data,
                                  const int64_t* offsets,
@@ -467,145 +467,70 @@ PhyBinaryRangeFilterExpr::ExecRangeVisitorImplForArray(ColumnVector* input) {
                                  ValueType val1,
                                  ValueType val2,
                                  int index) {
+#define BinaryRangeOp(ValueType, lower_inclusive, upper_inclusive) \
+    if (has_input_) {                                              \
+        BinaryRangeElementFuncForArray<ValueType,                  \
+                                       lower_inclusive,            \
+                                       upper_inclusive,            \
+                                       FilterType::post>           \
+            func;                                                  \
+        func(val1,                                                 \
+             val2,                                                 \
+             index,                                                \
+             data,                                                 \
+             valid_data,                                           \
+             size,                                                 \
+             res,                                                  \
+             valid_res,                                            \
+             offsets);                                             \
+    } else {                                                       \
+        BinaryRangeElementFuncForArray<ValueType,                  \
+                                       lower_inclusive,            \
+                                       upper_inclusive,            \
+                                       FilterType::pre>            \
+            func;                                                  \
+        func(val1,                                                 \
+             val2,                                                 \
+             index,                                                \
+             data,                                                 \
+             valid_data,                                           \
+             size,                                                 \
+             res,                                                  \
+             valid_res,                                            \
+             offsets);                                             \
+    }
         if (lower_inclusive && upper_inclusive) {
-            if (offsets == nullptr) {
-                BinaryRangeElementFuncForArray<ValueType,
-                                               true,
-                                               true,
-                                               FilterType::pre>
-                    func;
-                func(val1,
-                     val2,
-                     index,
-                     data,
-                     valid_data,
-                     size,
-                     res,
-                     valid_res,
-                     offsets);
-            } else {
-                BinaryRangeElementFuncForArray<ValueType,
-                                               true,
-                                               true,
-                                               FilterType::post>
-                    func;
-                func(val1,
-                     val2,
-                     index,
-                     data,
-                     valid_data,
-                     size,
-                     res,
-                     valid_res,
-                     offsets);
-            }
+            BinaryRangeOp(ValueType, true, true)
         } else if (lower_inclusive && !upper_inclusive) {
-            if (offsets == nullptr) {
-                BinaryRangeElementFuncForArray<ValueType,
-                                               true,
-                                               false,
-                                               FilterType::pre>
-                    func;
-                func(val1,
-                     val2,
-                     index,
-                     data,
-                     valid_data,
-                     size,
-                     res,
-                     valid_res,
-                     offsets);
-            } else {
-                BinaryRangeElementFuncForArray<ValueType,
-                                               true,
-                                               false,
-                                               FilterType::post>
-                    func;
-                func(val1,
-                     val2,
-                     index,
-                     data,
-                     valid_data,
-                     size,
-                     res,
-                     valid_res,
-                     offsets);
-            }
+            BinaryRangeOp(ValueType, true, false)
+
         } else if (!lower_inclusive && upper_inclusive) {
-            if (offsets == nullptr) {
-                BinaryRangeElementFuncForArray<ValueType,
-                                               false,
-                                               true,
-                                               FilterType::pre>
-                    func;
-                func(val1,
-                     val2,
-                     index,
-                     data,
-                     valid_data,
-                     size,
-                     res,
-                     valid_res,
-                     offsets);
-            } else {
-                BinaryRangeElementFuncForArray<ValueType,
-                                               false,
-                                               true,
-                                               FilterType::post>
-                    func;
-                func(val1,
-                     val2,
-                     index,
-                     data,
-                     valid_data,
-                     size,
-                     res,
-                     valid_res,
-                     offsets);
-            }
+            BinaryRangeOp(ValueType, false, true)
+
         } else {
-            if (offsets == nullptr) {
-                BinaryRangeElementFuncForArray<ValueType,
-                                               false,
-                                               false,
-                                               FilterType::pre>
-                    func;
-                func(val1,
-                     val2,
-                     index,
-                     data,
-                     valid_data,
-                     size,
-                     res,
-                     valid_res,
-                     offsets);
-            } else {
-                BinaryRangeElementFuncForArray<ValueType,
-                                               false,
-                                               false,
-                                               FilterType::post>
-                    func;
-                func(val1,
-                     val2,
-                     index,
-                     data,
-                     valid_data,
-                     size,
-                     res,
-                     valid_res,
-                     offsets);
-            }
+            BinaryRangeOp(ValueType, false, false)
         }
     };
-    int64_t processed_size =
-        ProcessDataByOffsets<milvus::ArrayView>(execute_sub_batch,
-                                                std::nullptr_t{},
-                                                input,
-                                                res,
-                                                valid_res,
-                                                val1,
-                                                val2,
-                                                index);
+    int64_t processed_size;
+    if (has_input_) {
+        processed_size =
+            ProcessDataByOffsets<milvus::ArrayView>(execute_sub_batch,
+                                                    std::nullptr_t{},
+                                                    input,
+                                                    res,
+                                                    valid_res,
+                                                    val1,
+                                                    val2,
+                                                    index);
+    } else {
+        processed_size = ProcessDataChunks<milvus::ArrayView>(execute_sub_batch,
+                                                              std::nullptr_t{},
+                                                              res,
+                                                              valid_res,
+                                                              val1,
+                                                              val2,
+                                                              index);
+    }
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",

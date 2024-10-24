@@ -432,10 +432,11 @@ PhyCompareFilterExpr::GetChunkData(DataType data_type,
 
 void
 PhyCompareFilterExpr::Eval(EvalCtx& context, VectorPtr& result) {
+    auto input = context.get_input();
+    SetHasInput((input != nullptr));
     // For segment both fields has no index, can use SIMD to speed up.
     // Avoiding too much call stack that blocks SIMD.
-    auto input = context.get_input();
-    if (input != nullptr ||
+    if (has_input_ ||
         (!is_left_indexed_ && !is_right_indexed_ && !IsStringExpr())) {
         result = ExecCompareExprDispatcherForBothDataSegment(input);
         return;
@@ -478,7 +479,7 @@ PhyCompareFilterExpr::ExecCompareExprDispatcherForHybridSegment() {
 
 VectorPtr
 PhyCompareFilterExpr::ExecCompareExprDispatcherForBothDataSegment(
-    ColumnVector* input) {
+    OffsetVector* input) {
     switch (expr_->left_data_type_) {
         case DataType::BOOL:
             return ExecCompareLeftType<bool>(input);
@@ -504,7 +505,7 @@ PhyCompareFilterExpr::ExecCompareExprDispatcherForBothDataSegment(
 
 template <typename T>
 VectorPtr
-PhyCompareFilterExpr::ExecCompareLeftType(ColumnVector* input) {
+PhyCompareFilterExpr::ExecCompareLeftType(OffsetVector* input) {
     switch (expr_->right_data_type_) {
         case DataType::BOOL:
             return ExecCompareRightType<T, bool>(input);
@@ -530,8 +531,8 @@ PhyCompareFilterExpr::ExecCompareLeftType(ColumnVector* input) {
 
 template <typename T, typename U>
 VectorPtr
-PhyCompareFilterExpr::ExecCompareRightType(ColumnVector* input) {
-    auto real_batch_size = GetNextBatchSize();
+PhyCompareFilterExpr::ExecCompareRightType(OffsetVector* input) {
+    auto real_batch_size = has_input_ ? input->size() : GetNextBatchSize();
     if (real_batch_size == 0) {
         return nullptr;
     }
@@ -543,55 +544,37 @@ PhyCompareFilterExpr::ExecCompareRightType(ColumnVector* input) {
     valid_res.set();
 
     auto expr_type = expr_->op_type_;
-    auto execute_sub_batch = [expr_type](const T* left,
-                                         const U* right,
-                                         const int64_t* offsets,
-                                         const int size,
-                                         TargetBitmapView res) {
-        auto func_impl = []<proto::plan::OpType op>(const T* left,
-                                                    const U* right,
-                                                    const int64_t* offsets,
-                                                    const int size,
-                                                    TargetBitmapView res) {
-            if (offsets == nullptr) {
-                CompareElementFunc<T, U, op, FilterType::pre> func;
-                func(left, right, size, res, offsets);
-            } else {
-                CompareElementFunc<T, U, op, FilterType::post> func;
-                func(left, right, size, res, offsets);
-            }
-        };
-
+    auto execute_sub_batch = [expr_type, this](const T* left,
+                                               const U* right,
+                                               const int64_t* offsets,
+                                               const int size,
+                                               TargetBitmapView res) {
+#define CompareOp(T, U, op)                                  \
+    if (has_input_) {                                        \
+        CompareElementFunc<T, U, op, FilterType::post> func; \
+        func(left, right, size, res, offsets);               \
+    } else {                                                 \
+        CompareElementFunc<T, U, op, FilterType::pre> func;  \
+        func(left, right, size, res, offsets);               \
+    }
         switch (expr_type) {
             case proto::plan::GreaterThan: {
-                func_impl.template operator()<proto::plan::GreaterThan>(
-                    left, right, offsets, size, res);
-                break;
+                CompareOp(T, U, proto::plan::GreaterThan) break;
             }
             case proto::plan::GreaterEqual: {
-                func_impl.template operator()<proto::plan::GreaterEqual>(
-                    left, right, offsets, size, res);
-                break;
+                CompareOp(T, U, proto::plan::GreaterEqual) break;
             }
             case proto::plan::LessThan: {
-                func_impl.template operator()<proto::plan::LessThan>(
-                    left, right, offsets, size, res);
-                break;
+                CompareOp(T, U, proto::plan::LessThan) break;
             }
             case proto::plan::LessEqual: {
-                func_impl.template operator()<proto::plan::LessEqual>(
-                    left, right, offsets, size, res);
-                break;
+                CompareOp(T, U, proto::plan::LessEqual) break;
             }
             case proto::plan::Equal: {
-                func_impl.template operator()<proto::plan::Equal>(
-                    left, right, offsets, size, res);
-                break;
+                CompareOp(T, U, proto::plan::Equal) break;
             }
             case proto::plan::NotEqual: {
-                func_impl.template operator()<proto::plan::NotEqual>(
-                    left, right, offsets, size, res);
-                break;
+                CompareOp(T, U, proto::plan::NotEqual) break;
             }
             default:
                 PanicInfo(OpTypeInvalid,
@@ -599,9 +582,14 @@ PhyCompareFilterExpr::ExecCompareRightType(ColumnVector* input) {
                                       "compare column expr: {}",
                                       expr_type));
         }
+#undef CompareOp
     };
-    int64_t processed_size =
-        ProcessBothDataChunks<T, U>(execute_sub_batch, input, res, valid_res);
+    int64_t processed_size;
+    if (has_input_) {
+        processed_size = ProcessBothDataChunks<T, U>(
+            execute_sub_batch, input, res, valid_res);
+    } else {
+    }
     AssertInfo(processed_size == real_batch_size,
                "internal error: expr processed rows {} not equal "
                "expect batch size {}",

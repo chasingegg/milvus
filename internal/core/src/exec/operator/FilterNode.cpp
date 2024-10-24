@@ -71,10 +71,6 @@ PhyFilterNode::GetOutput() {
     std::chrono::high_resolution_clock::time_point scalar_start =
         std::chrono::high_resolution_clock::now();
 
-    auto col_input = GetColumnVector(input_);
-    EvalCtx eval_ctx(
-        operator_context_->get_exec_context(), exprs_.get(), col_input.get());
-
     milvus::SearchResult search_result = query_context_->get_search_result();
     if (search_result.vector_iterators_.has_value()) {
         AssertInfo(search_result.vector_iterators_.value().size() ==
@@ -93,6 +89,8 @@ PhyFilterNode::GetOutput() {
         search_result.seg_offsets_.resize(nq * unity_topk);
         search_result.distances_.resize(nq * unity_topk);
         for (auto& iterator : search_result.vector_iterators_.value()) {
+            EvalCtx eval_ctx(operator_context_->get_exec_context(),
+                             exprs_.get());
             int topk = 0;
             while (iterator->HasNext() && topk < unity_topk) {
                 FixedVector<int64_t> offsets, diss;
@@ -116,8 +114,8 @@ PhyFilterNode::GetOutput() {
                 // for (int j = 0; j < offsets.size(); ++j) {
                 //     LOG_INFO("offset {}: {}", j, offsets[j]);
                 // }
-                auto x = std::make_shared<ColumnVector>(std::move(offsets));
-                eval_ctx.set_input(x.get());
+                // auto x = std::make_shared<ColumnVector>(std::move(offsets));
+                eval_ctx.set_input(&offsets);
                 exprs_->Eval(0, 1, true, eval_ctx, results_);
                 AssertInfo(
                     results_.size() == 1 && results_[0] != nullptr,
@@ -134,7 +132,7 @@ PhyFilterNode::GetOutput() {
                     if (bitsetview[i] > 0) {
                         search_result
                             .seg_offsets_[nq_index * unity_topk + topk] =
-                            x->GetOffsets()[i];
+                            offsets[i];
                         search_result.distances_[nq_index * unity_topk + topk] =
                             diss[i];
                         ++topk;

@@ -268,7 +268,7 @@ class PhyBinaryRangeFilterExpr : public SegmentExpr {
 
     template <typename T>
     VectorPtr
-    ExecRangeVisitorImpl(ColumnVector* input);
+    ExecRangeVisitorImpl(OffsetVector* input);
 
     template <typename T>
     VectorPtr
@@ -276,15 +276,15 @@ class PhyBinaryRangeFilterExpr : public SegmentExpr {
 
     template <typename T>
     VectorPtr
-    ExecRangeVisitorImplForData(ColumnVector* input);
+    ExecRangeVisitorImplForData(OffsetVector* input);
 
     template <typename ValueType>
     VectorPtr
-    ExecRangeVisitorImplForJson(ColumnVector* input);
+    ExecRangeVisitorImplForJson(OffsetVector* input);
 
     template <typename ValueType>
     VectorPtr
-    ExecRangeVisitorImplForArray(ColumnVector* input);
+    ExecRangeVisitorImplForArray(OffsetVector* input);
 
  private:
     std::shared_ptr<const milvus::expr::BinaryRangeFilterExpr> expr_;

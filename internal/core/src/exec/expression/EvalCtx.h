@@ -28,13 +28,18 @@ namespace milvus {
 namespace exec {
 
 class ExprSet;
+
+using OffsetVector = FixedVector<int64_t>;
 class EvalCtx {
  public:
-    EvalCtx(ExecContext* exec_ctx, ExprSet* expr_set, ColumnVector* input)
+    EvalCtx(ExecContext* exec_ctx, ExprSet* expr_set, OffsetVector* input)
         : exec_ctx_(exec_ctx), expr_set_(expr_set), input_(input) {
         assert(exec_ctx_ != nullptr);
         assert(expr_set_ != nullptr);
-        // assert(row_ != nullptr);
+    }
+
+    explicit EvalCtx(ExecContext* exec_ctx, ExprSet* expr_set)
+        : exec_ctx_(exec_ctx), expr_set_(expr_set), input_(nullptr) {
     }
 
     explicit EvalCtx(ExecContext* exec_ctx)
@@ -51,20 +56,21 @@ class EvalCtx {
         return exec_ctx_->get_query_config();
     }
 
-    ColumnVector*
+    inline OffsetVector*
     get_input() {
         return input_;
     }
 
-    void
-    set_input(ColumnVector* input) {
+    inline void
+    set_input(OffsetVector* input) {
         input_ = input;
     }
 
  private:
     ExecContext* exec_ctx_ = nullptr;
     ExprSet* expr_set_ = nullptr;
-    ColumnVector* input_ = nullptr;
+    // we may accept offsets(int64 array) as input and do expr filtering on these data
+    OffsetVector* input_ = nullptr;
     bool input_no_nulls_ = false;
 };
 

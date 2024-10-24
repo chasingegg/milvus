@@ -80,11 +80,17 @@ class Expr {
     MoveCursor() {
     }
 
+    void
+    SetHasInput(bool has_input) {
+        has_input_ = has_input;
+    }
+
  protected:
     DataType type_;
     const std::vector<std::shared_ptr<Expr>> inputs_;
     std::string name_;
     std::shared_ptr<VectorFunction> vector_func_;
+    bool has_input_ = false;
 };
 
 using ExprPtr = std::shared_ptr<milvus::exec::Expr>;
@@ -214,13 +220,16 @@ class SegmentExpr : public Expr {
 
     void
     MoveCursor() override {
-        if (is_index_mode_) {
-            MoveCursorForIndex();
-            if (segment_->HasFieldData(field_id_)) {
+        // when we specify input, do not states
+        if (has_input_) {
+            if (is_index_mode_) {
+                MoveCursorForIndex();
+                if (segment_->HasFieldData(field_id_)) {
+                    MoveCursorForData();
+                }
+            } else {
                 MoveCursorForData();
             }
-        } else {
-            MoveCursorForData();
         }
     }
 
@@ -271,6 +280,7 @@ class SegmentExpr : public Expr {
             // use valid_data to see if raw data is null
             func(views_info.first.data(),
                  views_info.second.data(),
+                 nullptr,
                  need_size,
                  res,
                  valid_res,
@@ -290,7 +300,7 @@ class SegmentExpr : public Expr {
     ProcessDataByOffsetsForSealedSeg(
         FUNC func,
         std::function<bool(const milvus::SkipIndex&, FieldId, int)> skip_func,
-        ColumnVector* input,
+        OffsetVector* input,
         TargetBitmapView res,
         TargetBitmapView valid_res,
         ValTypes... values) {
@@ -299,8 +309,8 @@ class SegmentExpr : public Expr {
 
         auto& skip_index = segment_->GetSkipIndex();
         if (!skip_func || !skip_func(skip_index, field_id_, 0)) {
-            auto [data_vec, valid_data] = segment_->get_views_by_offsets<T>(
-                field_id_, 0, input->GetOffsetsVector());
+            auto [data_vec, valid_data] =
+                segment_->get_views_by_offsets<T>(field_id_, 0, *input);
             // auto data_vec = segment_->get_batch_views<T>(
             //     field_id_, 0, 0, active_count_).first;
             func(data_vec.data(),
@@ -321,7 +331,7 @@ class SegmentExpr : public Expr {
     ProcessDataByOffsets(
         FUNC func,
         std::function<bool(const milvus::SkipIndex&, FieldId, int)> skip_func,
-        ColumnVector* input,
+        OffsetVector* input,
         TargetBitmapView res,
         TargetBitmapView valid_res,
         ValTypes... values) {
@@ -335,7 +345,7 @@ class SegmentExpr : public Expr {
                 if constexpr (std::is_same_v<T, std::string_view> ||
                               std::is_same_v<T, Json>) {
                     for (size_t i = 0; i < input->size(); ++i) {
-                        int64_t offset = input->GetOffsets()[i];
+                        int64_t offset = (*input)[i];
                         auto [chunk_id, chunk_offset] =
                             segment_->get_chunk_by_offset(field_id_, offset);
                         if (!skip_func ||
@@ -358,7 +368,7 @@ class SegmentExpr : public Expr {
                     return input->size();
                 }
                 for (size_t i = 0; i < input->size(); ++i) {
-                    int64_t offset = input->GetOffsets()[i];
+                    int64_t offset = (*input)[i];
                     auto [chunk_id, chunk_offset] =
                         segment_->get_chunk_by_offset(field_id_, offset);
                     if (!skip_func ||
@@ -392,7 +402,7 @@ class SegmentExpr : public Expr {
                     const bool* valid_data = chunk.valid_data();
                     func(data,
                          valid_data,
-                         input->GetOffsets(),
+                         input->data(),
                          input->size(),
                          res,
                          valid_res,
@@ -403,7 +413,7 @@ class SegmentExpr : public Expr {
         } else {
             // growing segment
             for (size_t i = 0; i < input->size(); ++i) {
-                int64_t offset = input->GetOffsets()[i];
+                int64_t offset = (*input)[i];
                 auto chunk_id = offset / size_per_chunk_;
                 auto chunk_offset = offset % size_per_chunk_;
                 if (!skip_func || !skip_func(skip_index, field_id_, chunk_id)) {
@@ -469,6 +479,7 @@ class SegmentExpr : public Expr {
                 }
                 func(data,
                      valid_data,
+                     nullptr,
                      size,
                      res + processed_size,
                      valid_res + processed_size,
@@ -533,6 +544,7 @@ class SegmentExpr : public Expr {
                                 field_id_, i, data_pos, size);
                         func(data_vec.data(),
                              valid_data.data(),
+                             nullptr,
                              size,
                              res + processed_size,
                              valid_res + processed_size,
@@ -549,6 +561,7 @@ class SegmentExpr : public Expr {
                     }
                     func(data,
                          valid_data,
+                         nullptr,
                          size,
                          res + processed_size,
                          valid_res + processed_size,
@@ -896,6 +909,9 @@ class SegmentExpr : public Expr {
 
     // Cache for text match.
     std::shared_ptr<TargetBitmap> cached_match_res_{nullptr};
+    // whether we have input(currently only offsets) and do expr filtering on these data
+    // default is false which means we will do expr filtering on the total segment data
+    // bool has_input_{false};
 };
 
 void

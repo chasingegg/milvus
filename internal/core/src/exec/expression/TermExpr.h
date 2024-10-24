@@ -83,11 +83,11 @@ class PhyTermFilterExpr : public SegmentExpr {
 
     template <typename T>
     VectorPtr
-    ExecVisitorImpl();
+    ExecVisitorImpl(OffsetVector* input);
 
-    template <typename T>
-    VectorPtr
-    ExecVisitorImplV2(ColumnVector* input);
+    // template <typename T>
+    // VectorPtr
+    // ExecVisitorImplV2(ColumnVector* input);
 
     template <typename T>
     VectorPtr
@@ -95,35 +95,35 @@ class PhyTermFilterExpr : public SegmentExpr {
 
     template <typename T>
     VectorPtr
-    ExecVisitorImplForData();
+    ExecVisitorImplForData(OffsetVector* input);
 
-    template <typename T>
-    VectorPtr
-    ExecVisitorImplForDataV2(ColumnVector* input);
-
-    template <typename ValueType>
-    VectorPtr
-    ExecVisitorImplTemplateJson(ColumnVector* input);
+    // template <typename T>
+    // VectorPtr
+    // ExecVisitorImplForDataV2(ColumnVector* input);
 
     template <typename ValueType>
     VectorPtr
-    ExecTermJsonVariableInField(ColumnVector* input);
+    ExecVisitorImplTemplateJson(OffsetVector* input);
 
     template <typename ValueType>
     VectorPtr
-    ExecTermJsonFieldInVariable(ColumnVector* input);
+    ExecTermJsonVariableInField(OffsetVector* input);
 
     template <typename ValueType>
     VectorPtr
-    ExecVisitorImplTemplateArray(ColumnVector* input);
+    ExecTermJsonFieldInVariable(OffsetVector* input);
 
     template <typename ValueType>
     VectorPtr
-    ExecTermArrayVariableInField(ColumnVector* input);
+    ExecVisitorImplTemplateArray(OffsetVector* input);
 
     template <typename ValueType>
     VectorPtr
-    ExecTermArrayFieldInVariable(ColumnVector* input);
+    ExecTermArrayVariableInField(OffsetVector* input);
+
+    template <typename ValueType>
+    VectorPtr
+    ExecTermArrayFieldInVariable(OffsetVector* input);
 
  private:
     std::shared_ptr<const milvus::expr::TermFilterExpr> expr_;
