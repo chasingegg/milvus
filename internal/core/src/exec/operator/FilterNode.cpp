@@ -57,7 +57,6 @@ PhyFilterNode::IsFinished() {
 
 RowVectorPtr
 PhyFilterNode::GetOutput() {
-    LOG_DEBUG("post filter");
     if (is_finished_ || !no_more_input_) {
         return nullptr;
     }
@@ -149,13 +148,6 @@ PhyFilterNode::GetOutput() {
         }
     }
     query_context_->set_search_result(std::move(search_result));
-
-    // TargetBitmap bitset;
-    // bitset.flip();
-    // Assert(bitset.size() == need_process_rows_);
-    // num_processed_rows_ = need_process_rows_;
-    // std::vector<VectorPtr> col_res;
-    // col_res.push_back(std::make_shared<ColumnVector>(std::move(bitset)));
     std::chrono::high_resolution_clock::time_point scalar_end =
         std::chrono::high_resolution_clock::now();
     double scalar_cost =

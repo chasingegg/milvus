@@ -700,13 +700,16 @@ class SingleChunkVariableColumn : public SingleChunkColumnBase {
     }
 
     std::pair<std::vector<std::string_view>, FixedVector<bool>>
-    ViewsByOffsets(const FixedVector<int64_t>& offsets) const override {
+    ViewsByOffsets(const FixedVector<int64_t>& offsets) const {
         std::vector<std::string_view> res;
+        FixedVector<bool> valid;
         res.reserve(offsets.size());
+        valid.reserve(offsets.size());
         for (size_t i = 0; i < offsets.size(); ++i) {
             res.emplace_back(RawAt(offsets[i]));
+            valid.emplace_back(valid_data_[offsets[i]]);
         }
-        return {res, valid_data_};
+        return {res, valid};
     }
 
     [[nodiscard]] std::vector<ViewType>
