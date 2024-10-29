@@ -7207,26 +7207,50 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeNullable) {
                 auto ref = ref_func(val, age8_valid_col[i]);
                 ASSERT_EQ(ans, ref)
                     << clause << "@" << i << "!!" << val << std::endl;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val << std::endl;
+                }
             } else if (dtype == DataType::INT16) {
                 auto val = age16_col[i];
                 auto ref = ref_func(val, age16_valid_col[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::INT32) {
                 auto val = age32_col[i];
                 auto ref = ref_func(val, age32_valid_col[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::INT64) {
                 auto val = age64_col[i];
                 auto ref = ref_func(val, age64_valid_col[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::FLOAT) {
                 auto val = age_float_col[i];
                 auto ref = ref_func(val, age_float_valid_col[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::DOUBLE) {
                 auto val = age_double_col[i];
                 auto ref = ref_func(val, age_double_valid_col[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else {
                 ASSERT_TRUE(false) << "No test case defined for this data type";
             }
@@ -8038,11 +8062,31 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSON) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto ref =
                 ref_func(milvus::Json(simdjson::padded_string(json_col[i])));
             ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << json_col[i];
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], ref)
+                    << clause << "@" << i << "!!" << json_col[i];
+            }
         }
     }
 }
@@ -8962,12 +9006,32 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSONNullable) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto ref =
                 ref_func(milvus::Json(simdjson::padded_string(json_col[i])),
                          valid_data[i]);
             ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << json_col[i];
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], ref)
+                    << clause << "@" << i << "!!" << json_col[i];
+            }
         }
     }
 }
@@ -9041,6 +9105,16 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSONFloat) {
             ExecuteQueryExpr(plan, seg_promote, N * num_iters, MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
 
@@ -9050,6 +9124,10 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSONFloat) {
             auto ref = check(val);
             ASSERT_EQ(ans, ref)
                 << testcase.value << " " << val << " " << testcase.op;
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], ref)
+                    << testcase.value << " " << val << " " << testcase.op;
+            }
         }
     }
 
@@ -9084,6 +9162,16 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSONFloat) {
             ExecuteQueryExpr(plan, seg_promote, N * num_iters, MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
 
@@ -9096,6 +9184,10 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSONFloat) {
             }
             auto ref = check(array_length);
             ASSERT_EQ(ans, ref) << testcase.value << " " << array_length;
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], ref)
+                    << testcase.value << " " << array_length;
+            }
         }
     }
 }
@@ -9174,6 +9266,16 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSONFloatNullable) {
             ExecuteQueryExpr(plan, seg_promote, N * num_iters, MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
 
@@ -9183,6 +9285,10 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSONFloatNullable) {
             auto ref = check(val, valid_data[i]);
             ASSERT_EQ(ans, ref)
                 << testcase.value << " " << val << " " << testcase.op;
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], ref)
+                    << testcase.value << " " << val << " " << testcase.op;
+            }
         }
     }
 
@@ -9220,6 +9326,16 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSONFloatNullable) {
             ExecuteQueryExpr(plan, seg_promote, N * num_iters, MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
 
@@ -9232,6 +9348,10 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSONFloatNullable) {
             }
             auto ref = check(array_length, valid_data[i]);
             ASSERT_EQ(ans, ref) << testcase.value << " " << array_length;
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], ref)
+                    << testcase.value << " " << array_length;
+            }
         }
     }
 }
@@ -9722,32 +9842,72 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeWithScalarSortIndex) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N / 2);
+
         for (int i = 0; i < N; ++i) {
             auto ans = final[i];
             if (dtype == DataType::INT8) {
                 auto val = age8_col[i];
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::INT16) {
                 auto val = age16_col[i];
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::INT32) {
                 auto val = age32_col[i];
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::INT64) {
                 auto val = age64_col[i];
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::FLOAT) {
                 auto val = age_float_col[i];
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::DOUBLE) {
                 auto val = age_double_col[i];
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else {
                 ASSERT_TRUE(false) << "No test case defined for this data type";
             }
@@ -10426,32 +10586,70 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeWithScalarSortIndexNullable) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N, 10));
+
         for (int i = 0; i < N; ++i) {
             auto ans = final[i];
             if (dtype == DataType::INT8) {
                 auto val = age8_col[i];
                 auto ref = ref_func(val, i8_valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i < std::min(N, 10)) {
+                    ASSERT_EQ(view[i], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::INT16) {
                 auto val = age16_col[i];
                 auto ref = ref_func(val, i16_valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i < std::min(N, 10)) {
+                    ASSERT_EQ(view[i], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::INT32) {
                 auto val = age32_col[i];
                 auto ref = ref_func(val, i32_valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i < std::min(N, 10)) {
+                    ASSERT_EQ(view[i], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::INT64) {
                 auto val = age64_col[i];
                 auto ref = ref_func(val, i64_valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i < std::min(N, 10)) {
+                    ASSERT_EQ(view[i], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::FLOAT) {
                 auto val = age_float_col[i];
                 auto ref = ref_func(val, float_valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i < std::min(N, 10)) {
+                    ASSERT_EQ(view[i], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::DOUBLE) {
                 auto val = age_double_col[i];
                 auto ref = ref_func(val, double_valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i < std::min(N, 10)) {
+                    ASSERT_EQ(view[i], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else {
                 ASSERT_TRUE(false) << "No test case defined for this data type";
             }
@@ -10626,6 +10824,20 @@ TEST_P(ExprTest, TestUnaryRangeWithJSON) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             if (dtype == DataType::BOOL) {
@@ -10634,24 +10846,40 @@ TEST_P(ExprTest, TestUnaryRangeWithJSON) {
                                .value();
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i < std::min(N * num_iters, 10)) {
+                    ASSERT_EQ(view[i], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::INT64) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .template at<int64_t>("/int")
                                .value();
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i < std::min(N * num_iters, 10)) {
+                    ASSERT_EQ(view[i], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::DOUBLE) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .template at<double>("/double")
                                .value();
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i < std::min(N * num_iters, 10)) {
+                    ASSERT_EQ(view[i], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::STRING) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .template at<std::string_view>("/string")
                                .value();
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i < std::min(N * num_iters, 10)) {
+                    ASSERT_EQ(view[i], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else {
                 ASSERT_TRUE(false) << "No test case defined for this data type";
             }
@@ -10856,6 +11084,20 @@ TEST_P(ExprTest, TestUnaryRangeWithJSONNullable) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             if (dtype == DataType::BOOL) {
@@ -10864,24 +11106,40 @@ TEST_P(ExprTest, TestUnaryRangeWithJSONNullable) {
                                .value();
                 auto ref = ref_func(val, valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i < std::min(N * num_iters, 10)) {
+                    ASSERT_EQ(view[i], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::INT64) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .template at<int64_t>("/int")
                                .value();
                 auto ref = ref_func(val, valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i < std::min(N * num_iters, 10)) {
+                    ASSERT_EQ(view[i], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::DOUBLE) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .template at<double>("/double")
                                .value();
                 auto ref = ref_func(val, valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i < std::min(N * num_iters, 10)) {
+                    ASSERT_EQ(view[i], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::STRING) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .template at<std::string_view>("/string")
                                .value();
                 auto ref = ref_func(val, valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i < std::min(N * num_iters, 10)) {
+                    ASSERT_EQ(view[i], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else {
                 ASSERT_TRUE(false) << "No test case defined for this data type";
             }
@@ -11034,6 +11292,22 @@ TEST_P(ExprTest, TestTermWithJSON) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             if (dtype == DataType::BOOL) {
@@ -11042,24 +11316,40 @@ TEST_P(ExprTest, TestTermWithJSON) {
                                .value();
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::INT64) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .template at<int64_t>("/int")
                                .value();
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::DOUBLE) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .template at<double>("/double")
                                .value();
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::STRING) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .template at<std::string_view>("/string")
                                .value();
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else {
                 ASSERT_TRUE(false) << "No test case defined for this data type";
             }
@@ -11234,6 +11524,22 @@ TEST_P(ExprTest, TestTermWithJSONNullable) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             if (dtype == DataType::BOOL) {
@@ -11242,24 +11548,40 @@ TEST_P(ExprTest, TestTermWithJSONNullable) {
                                .value();
                 auto ref = ref_func(val, valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::INT64) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .template at<int64_t>("/int")
                                .value();
                 auto ref = ref_func(val, valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::DOUBLE) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .template at<double>("/double")
                                .value();
                 auto ref = ref_func(val, valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::STRING) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .template at<std::string_view>("/string")
                                .value();
                 auto ref = ref_func(val, valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else {
                 ASSERT_TRUE(false) << "No test case defined for this data type";
             }
@@ -11386,6 +11708,22 @@ TEST_P(ExprTest, TestExistsWithJSON) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             if (dtype == DataType::BOOL) {
@@ -11393,26 +11731,46 @@ TEST_P(ExprTest, TestExistsWithJSON) {
                                .exist("/bool");
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::INT64) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .exist("/int");
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::DOUBLE) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .exist("/double");
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::STRING) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .exist("/string");
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::VARCHAR) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .exist("/varchar");
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else {
                 ASSERT_TRUE(false) << "No test case defined for this data type";
             }
@@ -11577,6 +11935,22 @@ TEST_P(ExprTest, TestExistsWithJSONNullable) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             if (dtype == DataType::BOOL) {
@@ -11584,26 +11958,46 @@ TEST_P(ExprTest, TestExistsWithJSONNullable) {
                                .exist("/bool");
                 auto ref = ref_func(val, valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::INT64) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .exist("/int");
                 auto ref = ref_func(val, valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::DOUBLE) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .exist("/double");
                 auto ref = ref_func(val, valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::STRING) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .exist("/string");
                 auto ref = ref_func(val, valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::VARCHAR) {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .exist("/varchar");
                 auto ref = ref_func(val, valid_data[i]);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else {
                 ASSERT_TRUE(false) << "No test case defined for this data type";
             }
@@ -11671,12 +12065,19 @@ TEST_P(ExprTest, TestTermInFieldJson) {
         auto start = std::chrono::steady_clock::now();
         final =
             ExecuteQueryExpr(plan, seg_promote, N * num_iters, MAX_TIMESTAMP);
-        // std::cout << "cost"
-        //           << std::chrono::duration_cast<std::chrono::microseconds>(
-        //                  std::chrono::steady_clock::now() - start)
-        //                  .count()
-        //           << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
+
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
 
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
@@ -11687,6 +12088,9 @@ TEST_P(ExprTest, TestTermInFieldJson) {
                 res.push_back(element.template get<bool>());
             }
             ASSERT_EQ(ans, check(res));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res));
+            }
         }
     }
 
@@ -11727,6 +12131,18 @@ TEST_P(ExprTest, TestTermInFieldJson) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -11736,6 +12152,9 @@ TEST_P(ExprTest, TestTermInFieldJson) {
                 res.push_back(element.template get<double>());
             }
             ASSERT_EQ(ans, check(res));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res));
+            }
         }
     }
 
@@ -11776,6 +12195,18 @@ TEST_P(ExprTest, TestTermInFieldJson) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -11785,6 +12216,9 @@ TEST_P(ExprTest, TestTermInFieldJson) {
                 res.push_back(element.template get<int64_t>());
             }
             ASSERT_EQ(ans, check(res));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res));
+            }
         }
     }
 
@@ -11825,6 +12259,18 @@ TEST_P(ExprTest, TestTermInFieldJson) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -11834,6 +12280,9 @@ TEST_P(ExprTest, TestTermInFieldJson) {
                 res.push_back(element.template get<std::string_view>());
             }
             ASSERT_EQ(ans, check(res));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res));
+            }
         }
     }
 }
@@ -11903,6 +12352,18 @@ TEST_P(ExprTest, TestTermInFieldJsonNullable) {
         //           << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -11912,6 +12373,9 @@ TEST_P(ExprTest, TestTermInFieldJsonNullable) {
                 res.push_back(element.template get<bool>());
             }
             ASSERT_EQ(ans, check(res, valid_data[i]));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res, valid_data[i]));
+            }
         }
     }
 
@@ -11955,6 +12419,18 @@ TEST_P(ExprTest, TestTermInFieldJsonNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -11964,6 +12440,9 @@ TEST_P(ExprTest, TestTermInFieldJsonNullable) {
                 res.push_back(element.template get<double>());
             }
             ASSERT_EQ(ans, check(res, valid_data[i]));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res, valid_data[i]));
+            }
         }
     }
 
@@ -12007,6 +12486,18 @@ TEST_P(ExprTest, TestTermInFieldJsonNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -12016,6 +12507,9 @@ TEST_P(ExprTest, TestTermInFieldJsonNullable) {
                 res.push_back(element.template get<int64_t>());
             }
             ASSERT_EQ(ans, check(res, valid_data[i]));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res, valid_data[i]));
+            }
         }
     }
 
@@ -12060,6 +12554,18 @@ TEST_P(ExprTest, TestTermInFieldJsonNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -12069,6 +12575,9 @@ TEST_P(ExprTest, TestTermInFieldJsonNullable) {
                 res.push_back(element.template get<std::string_view>());
             }
             ASSERT_EQ(ans, check(res, valid_data[i]));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res, valid_data[i]));
+            }
         }
     }
 }
@@ -12276,6 +12785,18 @@ TEST_P(ExprTest, TestJsonContainsAny) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -12285,6 +12806,9 @@ TEST_P(ExprTest, TestJsonContainsAny) {
                 res.push_back(element.template get<bool>());
             }
             ASSERT_EQ(ans, check(res));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res));
+            }
         }
     }
 
@@ -12326,6 +12850,18 @@ TEST_P(ExprTest, TestJsonContainsAny) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -12335,6 +12871,9 @@ TEST_P(ExprTest, TestJsonContainsAny) {
                 res.push_back(element.template get<double>());
             }
             ASSERT_EQ(ans, check(res));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res));
+            }
         }
     }
 
@@ -12376,6 +12915,18 @@ TEST_P(ExprTest, TestJsonContainsAny) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -12385,6 +12936,9 @@ TEST_P(ExprTest, TestJsonContainsAny) {
                 res.push_back(element.template get<int64_t>());
             }
             ASSERT_EQ(ans, check(res));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res));
+            }
         }
     }
 
@@ -12426,6 +12980,18 @@ TEST_P(ExprTest, TestJsonContainsAny) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -12435,6 +13001,9 @@ TEST_P(ExprTest, TestJsonContainsAny) {
                 res.push_back(element.template get<std::string_view>());
             }
             ASSERT_EQ(ans, check(res));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res));
+            }
         }
     }
 }
@@ -12505,6 +13074,18 @@ TEST_P(ExprTest, TestJsonContainsAnyNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -12514,6 +13095,9 @@ TEST_P(ExprTest, TestJsonContainsAnyNullable) {
                 res.push_back(element.template get<bool>());
             }
             ASSERT_EQ(ans, check(res, valid_data[i]));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res, valid_data[i]));
+            }
         }
     }
 
@@ -12558,6 +13142,18 @@ TEST_P(ExprTest, TestJsonContainsAnyNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -12567,6 +13163,9 @@ TEST_P(ExprTest, TestJsonContainsAnyNullable) {
                 res.push_back(element.template get<double>());
             }
             ASSERT_EQ(ans, check(res, valid_data[i]));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res, valid_data[i]));
+            }
         }
     }
 
@@ -12611,6 +13210,18 @@ TEST_P(ExprTest, TestJsonContainsAnyNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -12620,6 +13231,9 @@ TEST_P(ExprTest, TestJsonContainsAnyNullable) {
                 res.push_back(element.template get<int64_t>());
             }
             ASSERT_EQ(ans, check(res, valid_data[i]));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res, valid_data[i]));
+            }
         }
     }
 
@@ -12665,6 +13279,18 @@ TEST_P(ExprTest, TestJsonContainsAnyNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -12674,6 +13300,9 @@ TEST_P(ExprTest, TestJsonContainsAnyNullable) {
                 res.push_back(element.template get<std::string_view>());
             }
             ASSERT_EQ(ans, check(res, valid_data[i]));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res, valid_data[i]));
+            }
         }
     }
 }
@@ -12743,6 +13372,18 @@ TEST_P(ExprTest, TestJsonContainsAll) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -12752,6 +13393,9 @@ TEST_P(ExprTest, TestJsonContainsAll) {
                 res.push_back(element.template get<bool>());
             }
             ASSERT_EQ(ans, check(res));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res));
+            }
         }
     }
 
@@ -12801,6 +13445,18 @@ TEST_P(ExprTest, TestJsonContainsAll) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -12810,6 +13466,9 @@ TEST_P(ExprTest, TestJsonContainsAll) {
                 res.push_back(element.template get<double>());
             }
             ASSERT_EQ(ans, check(res));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res));
+            }
         }
     }
 
@@ -12858,6 +13517,18 @@ TEST_P(ExprTest, TestJsonContainsAll) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -12867,6 +13538,9 @@ TEST_P(ExprTest, TestJsonContainsAll) {
                 res.push_back(element.template get<int64_t>());
             }
             ASSERT_EQ(ans, check(res));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res));
+            }
         }
     }
 
@@ -12913,6 +13587,18 @@ TEST_P(ExprTest, TestJsonContainsAll) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -12922,6 +13608,9 @@ TEST_P(ExprTest, TestJsonContainsAll) {
                 res.push_back(element.template get<std::string_view>());
             }
             ASSERT_EQ(ans, check(res));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res));
+            }
         }
     }
 }
@@ -12996,6 +13685,18 @@ TEST_P(ExprTest, TestJsonContainsAllNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -13005,6 +13706,9 @@ TEST_P(ExprTest, TestJsonContainsAllNullable) {
                 res.push_back(element.template get<bool>());
             }
             ASSERT_EQ(ans, check(res, valid_data[i]));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res, valid_data[i]));
+            }
         }
     }
 
@@ -13056,6 +13760,18 @@ TEST_P(ExprTest, TestJsonContainsAllNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -13065,6 +13781,9 @@ TEST_P(ExprTest, TestJsonContainsAllNullable) {
                 res.push_back(element.template get<double>());
             }
             ASSERT_EQ(ans, check(res, valid_data[i]));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res, valid_data[i]));
+            }
         }
     }
 
@@ -13116,6 +13835,18 @@ TEST_P(ExprTest, TestJsonContainsAllNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -13125,6 +13856,9 @@ TEST_P(ExprTest, TestJsonContainsAllNullable) {
                 res.push_back(element.template get<int64_t>());
             }
             ASSERT_EQ(ans, check(res, valid_data[i]));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res, valid_data[i]));
+            }
         }
     }
 
@@ -13175,6 +13909,18 @@ TEST_P(ExprTest, TestJsonContainsAllNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto array = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -13184,6 +13930,9 @@ TEST_P(ExprTest, TestJsonContainsAllNullable) {
                 res.push_back(element.template get<std::string_view>());
             }
             ASSERT_EQ(ans, check(res, valid_data[i]));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res, valid_data[i]));
+            }
         }
     }
 }
@@ -13282,10 +14031,25 @@ TEST_P(ExprTest, TestJsonContainsArray) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             std::vector<bool> res;
             ASSERT_EQ(ans, check(res, i));
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], check(res, i));
+            }
         }
     }
 

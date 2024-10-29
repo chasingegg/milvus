@@ -648,6 +648,30 @@ class SegmentExpr : public Expr {
         }
     }
 
+    template <typename T, typename FUNC, typename... ValTypes>
+    VectorPtr
+    ProcessIndexChunksByOffsets(FUNC func,
+                                OffsetVector* input,
+                                ValTypes... values) {
+        typedef std::
+            conditional_t<std::is_same_v<T, std::string_view>, std::string, T>
+                IndexInnerType;
+        using Index = index::ScalarIndex<IndexInnerType>;
+        TargetBitmap valid_res(input->size());
+
+        const Index& index =
+            segment_->chunk_scalar_index<IndexInnerType>(field_id_, 0);
+        auto* index_ptr = const_cast<Index*>(&index);
+        auto valid_result = index_ptr->IsNotNull();
+        for (auto i = 0; i < input->size(); ++i) {
+            valid_res[i] = valid_result[(*input)[i]];
+        }
+        auto result = std::move(func.template operator()<FilterType::post>(
+            index_ptr, values..., input->data()));
+        return std::make_shared<ColumnVector>(std::move(result),
+                                              std::move(valid_res));
+    }
+
     int
     ProcessIndexOneChunk(TargetBitmap& result,
                          TargetBitmap& valid_result,
