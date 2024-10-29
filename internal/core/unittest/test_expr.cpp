@@ -367,6 +367,22 @@ TEST_P(ExprTest, TestRange) {
             seg_promote,
             N * num_iters,
             MAX_TIMESTAMP);
+
+        auto filter_node = dynamic_cast<milvus::plan::FilterBitsNode*>(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get());
+        std::vector<milvus::expr::TypedExprPtr> filters;
+        filters.emplace_back(filter_node->filter());
+        std::cout << filter_node->ToString() << std::endl;
+        auto query_context = std::make_shared<milvus::exec::QueryContext>(
+            DEAFULT_QUERY_ID, seg_promote, N * num_iters, MAX_TIMESTAMP);
+        std::unique_ptr<milvus::exec::ExecContext> exec_context =
+            std::make_unique<milvus::exec::ExecContext>(query_context.get());
+        auto exprs_ = std::make_unique<milvus::exec::ExprSet>(
+            filters, exec_context.get());
+        std::vector<VectorPtr> results_;
+        milvus::exec::EvalCtx eval_ctx(exec_context.get(), exprs_.get());
+        exprs_->Eval(0, 1, true, eval_ctx, results_);
+
         EXPECT_EQ(final.size(), N * num_iters);
 
         for (int i = 0; i < N * num_iters; ++i) {

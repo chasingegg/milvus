@@ -961,7 +961,7 @@ PhyUnaryRangeFilterExpr::ExecRangeVisitorImplForData(OffsetVector* input) {
         return nullptr;
     }
 
-    if (auto res = PreCheckOverflow<T>(input->size())) {
+    if (auto res = PreCheckOverflow<T>(real_batch_size)) {
         return res;
     }
 

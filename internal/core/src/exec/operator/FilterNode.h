@@ -65,9 +65,6 @@ class PhyFilterNode : public Operator {
         return BlockingReason::kNotBlocked;
     }
 
-    bool
-    AllInputProcessed();
-
     virtual std::string
     ToString() const override {
         return "PhyFilterNode";

@@ -124,7 +124,8 @@ SearchOnGrowing(const segcore::SegmentGrowingImpl& segment,
             auto size_per_chunk = element_end - element_begin;
 
             auto sub_view = bitset.subview(element_begin, size_per_chunk);
-            if (info.group_by_field_id_.has_value()) {
+            if (info.group_by_field_id_.has_value() ||
+                info.post_filter_execution) {
                 auto sub_qr = BruteForceSearchIterators(search_dataset,
                                                         chunk_data,
                                                         size_per_chunk,

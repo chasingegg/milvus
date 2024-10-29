@@ -42,17 +42,24 @@ PhyFilterNode::AddInput(RowVectorPtr& input) {
 }
 
 bool
-PhyFilterNode::AllInputProcessed() {
-    if (num_processed_rows_ == need_process_rows_) {
-        input_ = nullptr;
-        return true;
-    }
-    return false;
-}
-
-bool
 PhyFilterNode::IsFinished() {
     return is_finished_;
+}
+
+inline size_t
+find_binsert_position(const std::vector<float>& distances,
+                      size_t lo,
+                      size_t hi,
+                      float dist) {
+    while (lo < hi) {
+        size_t mid = (lo + hi) >> 1;
+        if (distances[mid] > dist) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    return lo;
 }
 
 RowVectorPtr
@@ -129,11 +136,21 @@ PhyFilterNode::GetOutput() {
                 Assert(bitsetview.size() <= unity_topk);
                 for (auto i = 0; i < bitsetview.size(); ++i) {
                     if (bitsetview[i] > 0) {
-                        search_result
-                            .seg_offsets_[nq_index * unity_topk + topk] =
-                            offsets[i];
-                        search_result.distances_[nq_index * unity_topk + topk] =
-                            diss[i];
+                        auto pos =
+                            find_binsert_position(search_result.distances_,
+                                                  nq_index * unity_topk,
+                                                  nq_index * unity_topk + topk,
+                                                  diss[i]);
+                        if (topk > pos) {
+                            std::memmove(&search_result.distances_[pos + 1],
+                                         &search_result.distances_[pos],
+                                         (topk - pos) * sizeof(float));
+                            std::memmove(&search_result.seg_offsets_[pos + 1],
+                                         &search_result.seg_offsets_[pos],
+                                         (topk - pos) * sizeof(int64_t));
+                        }
+                        search_result.seg_offsets_[pos] = offsets[i];
+                        search_result.distances_[pos] = diss[i];
                         ++topk;
                         if (topk == unity_topk) {
                             break;

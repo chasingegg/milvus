@@ -45,12 +45,12 @@ set(MILVUS_TEST_FILES
         # test_data_codec.cpp
         # test_disk_file_manager_test.cpp
         # test_exec.cpp
-        # test_expr.cpp
+        test_expr.cpp
         # test_expr_materialized_view.cpp
         # test_float16.cpp
         # test_futures.cpp
         test_group_by.cpp
-        test_post_filter.cpp
+        # test_post_filter.cpp
         # test_growing.cpp
         # test_growing_index.cpp
         # test_hybrid_index.cpp
