@@ -71,6 +71,31 @@ INSTANTIATE_TEST_SUITE_P(
         std::pair(milvus::DataType::VECTOR_SPARSE_FLOAT, knowhere::metric::IP),
         std::pair(milvus::DataType::VECTOR_BINARY, knowhere::metric::JACCARD)));
 
+ColumnVectorPtr
+gen_filter_res(milvus::plan::PlanNode* plan_node,
+               const milvus::segcore::SegmentInternalInterface* segment,
+               uint64_t active_count,
+               uint64_t timestamp,
+               FixedVector<int64_t>* offsets = nullptr) {
+    auto filter_node = dynamic_cast<milvus::plan::FilterBitsNode*>(plan_node);
+    std::vector<milvus::expr::TypedExprPtr> filters;
+    filters.emplace_back(filter_node->filter());
+    auto query_context = std::make_shared<milvus::exec::QueryContext>(
+        DEAFULT_QUERY_ID, segment, active_count, timestamp);
+
+    std::unique_ptr<milvus::exec::ExecContext> exec_context =
+        std::make_unique<milvus::exec::ExecContext>(query_context.get());
+    auto exprs_ =
+        std::make_unique<milvus::exec::ExprSet>(filters, exec_context.get());
+    std::vector<VectorPtr> results_;
+    milvus::exec::EvalCtx eval_ctx(exec_context.get(), exprs_.get());
+    eval_ctx.set_input(offsets);
+    exprs_->Eval(0, 1, true, eval_ctx, results_);
+
+    auto col_vec = std::dynamic_pointer_cast<milvus::ColumnVector>(results_[0]);
+    return col_vec;
+}
+
 TEST_P(ExprTest, Range) {
     SUCCEED();
     using namespace milvus;
@@ -368,22 +393,21 @@ TEST_P(ExprTest, TestRange) {
             N * num_iters,
             MAX_TIMESTAMP);
 
-        auto filter_node = dynamic_cast<milvus::plan::FilterBitsNode*>(
-            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get());
-        std::vector<milvus::expr::TypedExprPtr> filters;
-        filters.emplace_back(filter_node->filter());
-        std::cout << filter_node->ToString() << std::endl;
-        auto query_context = std::make_shared<milvus::exec::QueryContext>(
-            DEAFULT_QUERY_ID, seg_promote, N * num_iters, MAX_TIMESTAMP);
-        std::unique_ptr<milvus::exec::ExecContext> exec_context =
-            std::make_unique<milvus::exec::ExecContext>(query_context.get());
-        auto exprs_ = std::make_unique<milvus::exec::ExprSet>(
-            filters, exec_context.get());
-        std::vector<VectorPtr> results_;
-        milvus::exec::EvalCtx eval_ctx(exec_context.get(), exprs_.get());
-        exprs_->Eval(0, 1, true, eval_ctx, results_);
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < num_iters; ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
 
         EXPECT_EQ(final.size(), N * num_iters);
+        EXPECT_EQ(view.size(), num_iters);
 
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
@@ -391,6 +415,10 @@ TEST_P(ExprTest, TestRange) {
             auto val = age_col[i];
             auto ref = ref_func(val);
             ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+
+            if (i < num_iters) {
+                ASSERT_EQ(view[i], ref) << clause << "@" << i << "!!" << val;
+            }
         }
     }
 }
@@ -631,7 +659,23 @@ TEST_P(ExprTest, TestRangeNullable) {
             seg_promote,
             N * num_iters,
             MAX_TIMESTAMP);
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+
         EXPECT_EQ(final.size(), N * num_iters);
+        EXPECT_EQ(view.size(), int(N * num_iters / 2));
 
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
@@ -640,6 +684,10 @@ TEST_P(ExprTest, TestRangeNullable) {
             auto valid_data = valid_data_col[i];
             auto ref = ref_func(val, valid_data);
             ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], ref)
+                    << clause << "@" << i << "!!" << val;
+            }
         }
     }
 }
@@ -716,6 +764,21 @@ TEST_P(ExprTest, TestBinaryRangeJSON) {
             plannode, seg_promote, N * num_iters, MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(plannode.get(),
+                                      seg_promote,
+                                      N * num_iters,
+                                      MAX_TIMESTAMP,
+                                      &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
 
@@ -727,6 +790,11 @@ TEST_P(ExprTest, TestBinaryRangeJSON) {
                 ASSERT_EQ(ans, ref)
                     << val << testcase.lower_inclusive << testcase.lower
                     << testcase.upper_inclusive << testcase.upper;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << val << testcase.lower_inclusive << testcase.lower
+                        << testcase.upper_inclusive << testcase.upper;
+                }
             } else {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .template at<double>(pointer)
@@ -735,6 +803,11 @@ TEST_P(ExprTest, TestBinaryRangeJSON) {
                 ASSERT_EQ(ans, ref)
                     << val << testcase.lower_inclusive << testcase.lower
                     << testcase.upper_inclusive << testcase.upper;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << val << testcase.lower_inclusive << testcase.lower
+                        << testcase.upper_inclusive << testcase.upper;
+                }
             }
         }
     }
@@ -819,6 +892,21 @@ TEST_P(ExprTest, TestBinaryRangeJSONNullable) {
             plannode, seg_promote, N * num_iters, MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(plannode.get(),
+                                      seg_promote,
+                                      N * num_iters,
+                                      MAX_TIMESTAMP,
+                                      &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
 
@@ -830,6 +918,11 @@ TEST_P(ExprTest, TestBinaryRangeJSONNullable) {
                 ASSERT_EQ(ans, ref)
                     << val << testcase.lower_inclusive << testcase.lower
                     << testcase.upper_inclusive << testcase.upper;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << val << testcase.lower_inclusive << testcase.lower
+                        << testcase.upper_inclusive << testcase.upper;
+                }
             } else {
                 auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                                .template at<double>(pointer)
@@ -838,6 +931,11 @@ TEST_P(ExprTest, TestBinaryRangeJSONNullable) {
                 ASSERT_EQ(ans, ref)
                     << val << testcase.lower_inclusive << testcase.lower
                     << testcase.upper_inclusive << testcase.upper;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << val << testcase.lower_inclusive << testcase.lower
+                        << testcase.upper_inclusive << testcase.upper;
+                }
             }
         }
     }
@@ -892,12 +990,28 @@ TEST_P(ExprTest, TestExistsJson) {
             plannode, seg_promote, N * num_iters, MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = gen_filter_res(plannode.get(),
+                                      seg_promote,
+                                      N * num_iters,
+                                      MAX_TIMESTAMP,
+                                      &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                            .exist(pointer);
             auto ref = check(val);
             ASSERT_EQ(ans, ref);
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], ref);
+            }
         }
     }
 }
@@ -958,12 +1072,28 @@ TEST_P(ExprTest, TestExistsJsonNullable) {
             plannode, seg_promote, N * num_iters, MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = gen_filter_res(plannode.get(),
+                                      seg_promote,
+                                      N * num_iters,
+                                      MAX_TIMESTAMP,
+                                      &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto val = milvus::Json(simdjson::padded_string(json_col[i]))
                            .exist(pointer);
             auto ref = check(val, valid_data_col[i]);
             ASSERT_EQ(ans, ref);
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], ref);
+            }
         }
     }
 }
@@ -1096,6 +1226,21 @@ TEST_P(ExprTest, TestUnaryRangeJson) {
                 plan, seg_promote, N * num_iters, MAX_TIMESTAMP);
             EXPECT_EQ(final.size(), N * num_iters);
 
+            // specify some offsets and do scalar filtering on these offsets
+            FixedVector<int64_t> offsets;
+            for (auto i = 0; i < N * num_iters; ++i) {
+                if (i % 2 == 0) {
+                    offsets.emplace_back(i);
+                }
+            }
+            auto col_vec = gen_filter_res(plan.get(),
+                                          seg_promote,
+                                          N * num_iters,
+                                          MAX_TIMESTAMP,
+                                          &offsets);
+            BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+            EXPECT_EQ(view.size(), N * num_iters / 2);
+
             for (int i = 0; i < N * num_iters; ++i) {
                 auto ans = final[i];
                 if (testcase.nested_path[0] == "int") {
@@ -1105,6 +1250,9 @@ TEST_P(ExprTest, TestUnaryRangeJson) {
                             .value();
                     auto ref = f(val);
                     ASSERT_EQ(ans, ref);
+                    if (i % 2 == 0) {
+                        ASSERT_EQ(view[int(i / 2)], ref);
+                    }
                 } else {
                     auto val =
                         milvus::Json(simdjson::padded_string(json_col[i]))
@@ -1112,6 +1260,9 @@ TEST_P(ExprTest, TestUnaryRangeJson) {
                             .value();
                     auto ref = f(val);
                     ASSERT_EQ(ans, ref);
+                    if (i % 2 == 0) {
+                        ASSERT_EQ(view[int(i / 2)], ref);
+                    }
                 }
             }
         }
@@ -1159,10 +1310,28 @@ TEST_P(ExprTest, TestUnaryRangeJson) {
                 plan, seg_promote, N * num_iters, MAX_TIMESTAMP);
             EXPECT_EQ(final.size(), N * num_iters);
 
+            // specify some offsets and do scalar filtering on these offsets
+            FixedVector<int64_t> offsets;
+            for (auto i = 0; i < N * num_iters; ++i) {
+                if (i % 2 == 0) {
+                    offsets.emplace_back(i);
+                }
+            }
+            auto col_vec = gen_filter_res(plan.get(),
+                                          seg_promote,
+                                          N * num_iters,
+                                          MAX_TIMESTAMP,
+                                          &offsets);
+            BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+            EXPECT_EQ(view.size(), N * num_iters / 2);
+
             for (int i = 0; i < N * num_iters; ++i) {
                 auto ans = final[i];
                 auto ref = check(op);
                 ASSERT_EQ(ans, ref) << "@" << i << "op" << op;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref) << "@" << i << "op" << op;
+                }
             }
         }
     }
@@ -1300,6 +1469,21 @@ TEST_P(ExprTest, TestUnaryRangeJsonNullable) {
                 plan, seg_promote, N * num_iters, MAX_TIMESTAMP);
             EXPECT_EQ(final.size(), N * num_iters);
 
+            // specify some offsets and do scalar filtering on these offsets
+            FixedVector<int64_t> offsets;
+            for (auto i = 0; i < N * num_iters; ++i) {
+                if (i % 2 == 0) {
+                    offsets.emplace_back(i);
+                }
+            }
+            auto col_vec = gen_filter_res(plan.get(),
+                                          seg_promote,
+                                          N * num_iters,
+                                          MAX_TIMESTAMP,
+                                          &offsets);
+            BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+            EXPECT_EQ(view.size(), N * num_iters / 2);
+
             for (int i = 0; i < N * num_iters; ++i) {
                 auto ans = final[i];
                 if (testcase.nested_path[0] == "int") {
@@ -1309,6 +1493,9 @@ TEST_P(ExprTest, TestUnaryRangeJsonNullable) {
                             .value();
                     auto ref = f(val, valid_data_col[i]);
                     ASSERT_EQ(ans, ref);
+                    if (i % 2 == 0) {
+                        ASSERT_EQ(view[int(i / 2)], ref);
+                    }
                 } else {
                     auto val =
                         milvus::Json(simdjson::padded_string(json_col[i]))
@@ -1316,6 +1503,9 @@ TEST_P(ExprTest, TestUnaryRangeJsonNullable) {
                             .value();
                     auto ref = f(val, valid_data_col[i]);
                     ASSERT_EQ(ans, ref);
+                    if (i % 2 == 0) {
+                        ASSERT_EQ(view[int(i / 2)], ref);
+                    }
                 }
             }
         }
@@ -1436,6 +1626,18 @@ TEST_P(ExprTest, TestTermJson) {
             ExecuteQueryExpr(plan, seg_promote, N * num_iters, MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto val = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -1443,6 +1645,9 @@ TEST_P(ExprTest, TestTermJson) {
                            .value();
             auto ref = check(val);
             ASSERT_EQ(ans, ref);
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], ref);
+            }
         }
     }
 }
@@ -1515,6 +1720,19 @@ TEST_P(ExprTest, TestTermJsonNullable) {
         final =
             ExecuteQueryExpr(plan, seg_promote, N * num_iters, MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
+
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             auto val = milvus::Json(simdjson::padded_string(json_col[i]))
@@ -1522,6 +1740,9 @@ TEST_P(ExprTest, TestTermJsonNullable) {
                            .value();
             auto ref = check(val, valid_data_col[i]);
             ASSERT_EQ(ans, ref);
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], ref);
+            }
         }
     }
 }
@@ -1612,12 +1833,29 @@ TEST_P(ExprTest, TestTerm) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
 
             auto val = age_col[i];
             auto ref = ref_func(val);
             ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], ref) << clause << "@" << i << "!!" << val;
+            }
         }
     }
 }
@@ -1745,12 +1983,29 @@ TEST_P(ExprTest, TestTermNullable) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
 
             auto val = nullable_col[i];
             auto ref = ref_func(val, valid_data_col[i]);
             ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], ref) << clause << "@" << i << "!!" << val;
+            }
         }
     }
 }
@@ -1833,6 +2088,22 @@ TEST_P(ExprTest, TestCompare) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
 
@@ -1841,6 +2112,11 @@ TEST_P(ExprTest, TestCompare) {
             auto ref = ref_func(val1, val2);
             ASSERT_EQ(ans, ref) << clause << "@" << i << "!!"
                                 << boost::format("[%1%, %2%]") % val1 % val2;
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], ref)
+                    << clause << "@" << i << "!!"
+                    << boost::format("[%1%, %2%]") % val1 % val2;
+            }
         }
     }
 }
@@ -1965,6 +2241,22 @@ TEST_P(ExprTest, TestCompareNullable) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
 
@@ -1973,6 +2265,11 @@ TEST_P(ExprTest, TestCompareNullable) {
             auto ref = ref_func(val1, val2, valid_data_col[i]);
             ASSERT_EQ(ans, ref) << clause << "@" << i << "!!"
                                 << boost::format("[%1%, %2%]") % val1 % val2;
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], ref)
+                    << clause << "@" << i << "!!"
+                    << boost::format("[%1%, %2%]") % val1 % val2;
+            }
         }
     }
 }
@@ -2097,6 +2394,22 @@ TEST_P(ExprTest, TestCompareNullable2) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
 
@@ -2105,6 +2418,11 @@ TEST_P(ExprTest, TestCompareNullable2) {
             auto ref = ref_func(val1, val2, valid_data_col[i]);
             ASSERT_EQ(ans, ref) << clause << "@" << i << "!!"
                                 << boost::format("[%1%, %2%]") % val1 % val2;
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], ref)
+                    << clause << "@" << i << "!!"
+                    << boost::format("[%1%, %2%]") % val1 % val2;
+            }
         }
     }
 }
@@ -2194,6 +2512,22 @@ TEST_P(ExprTest, TestCompareWithScalarIndex) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg.get(),
+            N,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N / 2);
+
         for (int i = 0; i < N; ++i) {
             auto ans = final[i];
             auto val1 = age32_col[i];
@@ -2201,6 +2535,11 @@ TEST_P(ExprTest, TestCompareWithScalarIndex) {
             auto ref = ref_func(val1, val2);
             ASSERT_EQ(ans, ref) << clause << "@" << i << "!!"
                                 << boost::format("[%1%, %2%]") % val1 % val2;
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], ref)
+                    << clause << "@" << i << "!!"
+                    << boost::format("[%1%, %2%]") % val1 % val2;
+            }
         }
     }
 }
@@ -2330,6 +2669,22 @@ TEST_P(ExprTest, TestCompareWithScalarIndexNullable) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg.get(),
+            N,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N / 2);
+
         for (int i = 0; i < N; ++i) {
             auto ans = final[i];
             auto val1 = nullable_col[i];
@@ -2337,6 +2692,11 @@ TEST_P(ExprTest, TestCompareWithScalarIndexNullable) {
             auto ref = ref_func(val1, val2, valid_data_col[i]);
             ASSERT_EQ(ans, ref) << clause << "@" << i << "!!"
                                 << boost::format("[%1%, %2%]") % val1 % val2;
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], ref)
+                    << clause << "@" << i << "!!"
+                    << boost::format("[%1%, %2%]") % val1 % val2;
+            }
         }
     }
 }
@@ -2466,6 +2826,22 @@ TEST_P(ExprTest, TestCompareWithScalarIndexNullable2) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg.get(),
+            N,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N / 2);
+
         for (int i = 0; i < N; ++i) {
             auto ans = final[i];
             auto val2 = nullable_col[i];
@@ -2473,6 +2849,11 @@ TEST_P(ExprTest, TestCompareWithScalarIndexNullable2) {
             auto ref = ref_func(val1, val2, valid_data_col[i]);
             ASSERT_EQ(ans, ref) << clause << "@" << i << "!!"
                                 << boost::format("[%1%, %2%]") % val1 % val2;
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], ref)
+                    << clause << "@" << i << "!!"
+                    << boost::format("[%1%, %2%]") % val1 % val2;
+            }
         }
     }
 }
@@ -2537,8 +2918,24 @@ TEST_P(ExprTest, test_term_pk_with_sorted) {
     plan = std::make_shared<plan::FilterBitsNode>(DEFAULT_PLANNODE_ID, expr);
     final = ExecuteQueryExpr(plan, seg.get(), N, MAX_TIMESTAMP);
     EXPECT_EQ(final.size(), N);
+
+    // specify some offsets and do scalar filtering on these offsets
+    FixedVector<int64_t> offsets;
+    for (auto i = 0; i < N; ++i) {
+        if (i % 2 == 0) {
+            offsets.emplace_back(i);
+        }
+    }
+    auto col_vec =
+        gen_filter_res(plan.get(), seg.get(), N, MAX_TIMESTAMP, &offsets);
+    BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+    EXPECT_EQ(view.size(), N / 2);
+
     for (int i = 0; i < N; ++i) {
         EXPECT_EQ(final[i], false);
+        if (i % 2 == 0) {
+            EXPECT_EQ(view[int(i / 2)], false);
+        }
     }
 }
 
@@ -3620,9 +4017,25 @@ TEST(Expr, TestExprNOT) {
         auto start = std::chrono::steady_clock::now();
         final = ExecuteQueryExpr(plan, seg.get(), N, MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N);
+
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec =
+            gen_filter_res(plan.get(), seg.get(), N, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N / 2);
+
         for (int i = 0; i < N; i++) {
             if (!valid_data[i]) {
                 EXPECT_EQ(final[i], false);
+                if (i % 2 == 0) {
+                    EXPECT_EQ(view[int(i / 2)], false);
+                }
             }
         }
     };
@@ -3790,8 +4203,24 @@ TEST_P(ExprTest, test_term_pk) {
     plan = std::make_shared<plan::FilterBitsNode>(DEFAULT_PLANNODE_ID, expr);
     final = ExecuteQueryExpr(plan, seg.get(), N, MAX_TIMESTAMP);
     EXPECT_EQ(final.size(), N);
+
+    // specify some offsets and do scalar filtering on these offsets
+    FixedVector<int64_t> offsets;
+    for (auto i = 0; i < N; ++i) {
+        if (i % 2 == 0) {
+            offsets.emplace_back(i);
+        }
+    }
+    auto col_vec =
+        gen_filter_res(plan.get(), seg.get(), N, MAX_TIMESTAMP, &offsets);
+    BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+    EXPECT_EQ(view.size(), N / 2);
+
     for (int i = 0; i < N; ++i) {
         EXPECT_EQ(final[i], false);
+        if (i % 2 == 0) {
+            EXPECT_EQ(view[int(i / 2)], false);
+        }
     }
 }
 
@@ -3911,8 +4340,24 @@ TEST_P(ExprTest, TestConjuctExpr) {
             std::make_shared<plan::FilterBitsNode>(DEFAULT_PLANNODE_ID, expr);
         BitsetType final;
         final = ExecuteQueryExpr(plan, seg.get(), N, MAX_TIMESTAMP);
+
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec =
+            gen_filter_res(plan.get(), seg.get(), N, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N / 2);
         for (int i = 0; i < N; ++i) {
             EXPECT_EQ(final[i], pair.first < i && i < pair.second) << i;
+            if (i % 2 == 0) {
+                EXPECT_EQ(view[int(i / 2)], pair.first < i && i < pair.second)
+                    << i;
+            }
         }
     }
 }
@@ -3982,8 +4427,24 @@ TEST_P(ExprTest, TestConjuctExprNullable) {
             std::make_shared<plan::FilterBitsNode>(DEFAULT_PLANNODE_ID, expr);
         BitsetType final;
         final = ExecuteQueryExpr(plan, seg.get(), N, MAX_TIMESTAMP);
+
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec =
+            gen_filter_res(plan.get(), seg.get(), N, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N / 2);
         for (int i = 0; i < N; ++i) {
             EXPECT_EQ(final[i], pair.first < i && i < pair.second) << i;
+            if (i % 2 == 0) {
+                EXPECT_EQ(view[int(i / 2)], pair.first < i && i < pair.second)
+                    << i;
+            }
         }
     }
 }
@@ -4707,6 +5168,22 @@ TEST_P(ExprTest, TestCompareWithScalarIndexMaris) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg.get(),
+            N,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N / 2);
+
         for (int i = 0; i < N; ++i) {
             auto ans = final[i];
             auto val1 = str1_col[i];
@@ -4714,6 +5191,11 @@ TEST_P(ExprTest, TestCompareWithScalarIndexMaris) {
             auto ref = ref_func(val1, val2);
             ASSERT_EQ(ans, ref) << clause << "@" << i << "!!"
                                 << boost::format("[%1%, %2%]") % val1 % val2;
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], ref)
+                    << clause << "@" << i << "!!"
+                    << boost::format("[%1%, %2%]") % val1 % val2;
+            }
         }
     }
 }
@@ -4838,6 +5320,22 @@ TEST_P(ExprTest, TestCompareWithScalarIndexMarisNullable) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg.get(),
+            N,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N / 2);
+
         for (int i = 0; i < N; ++i) {
             auto ans = final[i];
             auto val1 = str1_col[i];
@@ -4845,6 +5343,11 @@ TEST_P(ExprTest, TestCompareWithScalarIndexMarisNullable) {
             auto ref = ref_func(val1, val2, valid_data_col[i]);
             ASSERT_EQ(ans, ref) << clause << "@" << i << "!!"
                                 << boost::format("[%1%, %2%]") % val1 % val2;
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], ref)
+                    << clause << "@" << i << "!!"
+                    << boost::format("[%1%, %2%]") % val1 % val2;
+            }
         }
     }
 }
@@ -4969,6 +5472,22 @@ TEST_P(ExprTest, TestCompareWithScalarIndexMarisNullable2) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg.get(),
+            N,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N / 2);
+
         for (int i = 0; i < N; ++i) {
             auto ans = final[i];
             auto val1 = nullable_col[i];
@@ -4976,6 +5495,11 @@ TEST_P(ExprTest, TestCompareWithScalarIndexMarisNullable2) {
             auto ref = ref_func(val1, val2, valid_data_col[i]);
             ASSERT_EQ(ans, ref) << clause << "@" << i << "!!"
                                 << boost::format("[%1%, %2%]") % val1 % val2;
+            if (i % 2 == 0) {
+                ASSERT_EQ(view[int(i / 2)], ref)
+                    << clause << "@" << i << "!!"
+                    << boost::format("[%1%, %2%]") % val1 % val2;
+            }
         }
     }
 }
@@ -5681,6 +6205,22 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRange) {
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             if (dtype == DataType::INT8) {
@@ -5688,26 +6228,50 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRange) {
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref)
                     << clause << "@" << i << "!!" << val << std::endl;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val << std::endl;
+                }
             } else if (dtype == DataType::INT16) {
                 auto val = age16_col[i];
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::INT32) {
                 auto val = age32_col[i];
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::INT64) {
                 auto val = age64_col[i];
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::FLOAT) {
                 auto val = age_float_col[i];
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else if (dtype == DataType::DOUBLE) {
                 auto val = age_double_col[i];
                 auto ref = ref_func(val);
                 ASSERT_EQ(ans, ref) << clause << "@" << i << "!!" << val;
+                if (i % 2 == 0) {
+                    ASSERT_EQ(view[int(i / 2)], ref)
+                        << clause << "@" << i << "!!" << val;
+                }
             } else {
                 ASSERT_TRUE(false) << "No test case defined for this data type";
             }
@@ -6619,6 +7183,22 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeNullable) {
             N * num_iters,
             MAX_TIMESTAMP);
         EXPECT_EQ(final.size(), N * num_iters);
+
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < N * num_iters; ++i) {
+            if (i % 2 == 0) {
+                offsets.emplace_back(i);
+            }
+        }
+        auto col_vec = gen_filter_res(
+            plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
+            seg_promote,
+            N * num_iters,
+            MAX_TIMESTAMP,
+            &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), N * num_iters / 2);
 
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];

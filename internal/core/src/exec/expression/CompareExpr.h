@@ -304,19 +304,27 @@ class PhyCompareFilterExpr : public Expr {
                              ValTypes... values) {
         int64_t size = input->size();
         int64_t processed_size = 0;
-        if (segment_->is_chunked()) {
+        if (segment_->is_chunked() ||
+            segment_->type() == SegmentType::Growing) {
             for (auto i = 0; i < size; ++i) {
                 auto offset = (*input)[i];
-                auto [left_chunk_id, left_chunk_offset] =
-                    segment_->get_chunk_by_offset(left_field_, offset);
+                auto [chunk_id,
+                      chunk_offset] = [&]() -> std::pair<int64_t, int64_t> {
+                    if (segment_->type() == SegmentType::Growing) {
+                        return {offset / size_per_chunk_,
+                                offset % size_per_chunk_};
+                    } else {
+                        return segment_->get_chunk_by_offset(right_field_,
+                                                             offset);
+                    }
+                }();
                 auto left_chunk =
-                    segment_->chunk_data<T>(left_field_, left_chunk_id);
-                auto [right_chunk_id, right_chunk_offset] =
-                    segment_->get_chunk_by_offset(right_field_, offset);
+                    segment_->chunk_data<T>(left_field_, chunk_id);
+
                 auto right_chunk =
-                    segment_->chunk_data<U>(right_field_, right_chunk_id);
-                const T* left_data = left_chunk.data() + left_chunk_offset;
-                const U* right_data = right_chunk.data() + right_chunk_offset;
+                    segment_->chunk_data<U>(right_field_, chunk_id);
+                const T* left_data = left_chunk.data() + chunk_offset;
+                const U* right_data = right_chunk.data() + chunk_offset;
                 func.template operator()<FilterType::post>(left_data,
                                                            right_data,
                                                            nullptr,
@@ -326,12 +334,12 @@ class PhyCompareFilterExpr : public Expr {
                 const bool* left_valid_data = left_chunk.valid_data();
                 const bool* right_valid_data = right_chunk.valid_data();
                 // mask with valid_data
-                if (left_valid_data && !left_valid_data[left_chunk_offset]) {
+                if (left_valid_data && !left_valid_data[chunk_offset]) {
                     res[processed_size] = false;
                     valid_res[processed_size] = false;
                     continue;
                 }
-                if (right_valid_data && !right_valid_data[right_chunk_offset]) {
+                if (right_valid_data && !right_valid_data[chunk_offset]) {
                     res[processed_size] = false;
                     valid_res[processed_size] = false;
                 }

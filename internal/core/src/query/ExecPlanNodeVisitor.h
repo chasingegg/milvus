@@ -114,8 +114,7 @@ inline BitsetType
 ExecuteQueryExpr(std::shared_ptr<milvus::plan::PlanNode> plannode,
                  const milvus::segcore::SegmentInternalInterface* segment,
                  uint64_t active_count,
-                 uint64_t timestamp,
-                 const std::vector<int64_t>& offsets = {}) {
+                 uint64_t timestamp) {
     auto plan_fragment = plan::PlanFragment(plannode);
 
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
