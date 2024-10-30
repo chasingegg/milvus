@@ -30,6 +30,7 @@
 #include "simdjson/padded_string.h"
 #include "segcore/segment_c.h"
 #include "test_utils/DataGen.h"
+#include "test_utils/GenExprProto.h"
 #include "index/IndexFactory.h"
 #include "exec/expression/Expr.h"
 #include "exec/Task.h"
@@ -70,31 +71,6 @@ INSTANTIATE_TEST_SUITE_P(
         std::pair(milvus::DataType::VECTOR_FLOAT, knowhere::metric::L2),
         std::pair(milvus::DataType::VECTOR_SPARSE_FLOAT, knowhere::metric::IP),
         std::pair(milvus::DataType::VECTOR_BINARY, knowhere::metric::JACCARD)));
-
-ColumnVectorPtr
-gen_filter_res(milvus::plan::PlanNode* plan_node,
-               const milvus::segcore::SegmentInternalInterface* segment,
-               uint64_t active_count,
-               uint64_t timestamp,
-               FixedVector<int64_t>* offsets = nullptr) {
-    auto filter_node = dynamic_cast<milvus::plan::FilterBitsNode*>(plan_node);
-    std::vector<milvus::expr::TypedExprPtr> filters;
-    filters.emplace_back(filter_node->filter());
-    auto query_context = std::make_shared<milvus::exec::QueryContext>(
-        DEAFULT_QUERY_ID, segment, active_count, timestamp);
-
-    std::unique_ptr<milvus::exec::ExecContext> exec_context =
-        std::make_unique<milvus::exec::ExecContext>(query_context.get());
-    auto exprs_ =
-        std::make_unique<milvus::exec::ExprSet>(filters, exec_context.get());
-    std::vector<VectorPtr> results_;
-    milvus::exec::EvalCtx eval_ctx(exec_context.get(), exprs_.get());
-    eval_ctx.set_input(offsets);
-    exprs_->Eval(0, 1, true, eval_ctx, results_);
-
-    auto col_vec = std::dynamic_pointer_cast<milvus::ColumnVector>(results_[0]);
-    return col_vec;
-}
 
 TEST_P(ExprTest, Range) {
     SUCCEED();
@@ -398,7 +374,7 @@ TEST_P(ExprTest, TestRange) {
         for (auto i = 0; i < num_iters; ++i) {
             offsets.emplace_back(i);
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -666,7 +642,7 @@ TEST_P(ExprTest, TestRangeNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -771,11 +747,11 @@ TEST_P(ExprTest, TestBinaryRangeJSON) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(plannode.get(),
-                                      seg_promote,
-                                      N * num_iters,
-                                      MAX_TIMESTAMP,
-                                      &offsets);
+        auto col_vec = milvus::test::gen_filter_res(plannode.get(),
+                                                    seg_promote,
+                                                    N * num_iters,
+                                                    MAX_TIMESTAMP,
+                                                    &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
 
@@ -899,11 +875,11 @@ TEST_P(ExprTest, TestBinaryRangeJSONNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(plannode.get(),
-                                      seg_promote,
-                                      N * num_iters,
-                                      MAX_TIMESTAMP,
-                                      &offsets);
+        auto col_vec = milvus::test::gen_filter_res(plannode.get(),
+                                                    seg_promote,
+                                                    N * num_iters,
+                                                    MAX_TIMESTAMP,
+                                                    &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
 
@@ -995,11 +971,11 @@ TEST_P(ExprTest, TestExistsJson) {
         for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
             offsets.emplace_back(i);
         }
-        auto col_vec = gen_filter_res(plannode.get(),
-                                      seg_promote,
-                                      N * num_iters,
-                                      MAX_TIMESTAMP,
-                                      &offsets);
+        auto col_vec = milvus::test::gen_filter_res(plannode.get(),
+                                                    seg_promote,
+                                                    N * num_iters,
+                                                    MAX_TIMESTAMP,
+                                                    &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
 
@@ -1077,11 +1053,11 @@ TEST_P(ExprTest, TestExistsJsonNullable) {
         for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
             offsets.emplace_back(i);
         }
-        auto col_vec = gen_filter_res(plannode.get(),
-                                      seg_promote,
-                                      N * num_iters,
-                                      MAX_TIMESTAMP,
-                                      &offsets);
+        auto col_vec = milvus::test::gen_filter_res(plannode.get(),
+                                                    seg_promote,
+                                                    N * num_iters,
+                                                    MAX_TIMESTAMP,
+                                                    &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
 
@@ -1233,11 +1209,11 @@ TEST_P(ExprTest, TestUnaryRangeJson) {
                     offsets.emplace_back(i);
                 }
             }
-            auto col_vec = gen_filter_res(plan.get(),
-                                          seg_promote,
-                                          N * num_iters,
-                                          MAX_TIMESTAMP,
-                                          &offsets);
+            auto col_vec = milvus::test::gen_filter_res(plan.get(),
+                                                        seg_promote,
+                                                        N * num_iters,
+                                                        MAX_TIMESTAMP,
+                                                        &offsets);
             BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
             EXPECT_EQ(view.size(), N * num_iters / 2);
 
@@ -1317,11 +1293,11 @@ TEST_P(ExprTest, TestUnaryRangeJson) {
                     offsets.emplace_back(i);
                 }
             }
-            auto col_vec = gen_filter_res(plan.get(),
-                                          seg_promote,
-                                          N * num_iters,
-                                          MAX_TIMESTAMP,
-                                          &offsets);
+            auto col_vec = milvus::test::gen_filter_res(plan.get(),
+                                                        seg_promote,
+                                                        N * num_iters,
+                                                        MAX_TIMESTAMP,
+                                                        &offsets);
             BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
             EXPECT_EQ(view.size(), N * num_iters / 2);
 
@@ -1476,11 +1452,11 @@ TEST_P(ExprTest, TestUnaryRangeJsonNullable) {
                     offsets.emplace_back(i);
                 }
             }
-            auto col_vec = gen_filter_res(plan.get(),
-                                          seg_promote,
-                                          N * num_iters,
-                                          MAX_TIMESTAMP,
-                                          &offsets);
+            auto col_vec = milvus::test::gen_filter_res(plan.get(),
+                                                        seg_promote,
+                                                        N * num_iters,
+                                                        MAX_TIMESTAMP,
+                                                        &offsets);
             BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
             EXPECT_EQ(view.size(), N * num_iters / 2);
 
@@ -1633,7 +1609,7 @@ TEST_P(ExprTest, TestTermJson) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -1728,7 +1704,7 @@ TEST_P(ExprTest, TestTermJsonNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -1838,7 +1814,7 @@ TEST_P(ExprTest, TestTerm) {
         for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
             offsets.emplace_back(i);
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -1988,7 +1964,7 @@ TEST_P(ExprTest, TestTermNullable) {
         for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
             offsets.emplace_back(i);
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -2095,7 +2071,7 @@ TEST_P(ExprTest, TestCompare) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -2248,7 +2224,7 @@ TEST_P(ExprTest, TestCompareNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -2401,7 +2377,7 @@ TEST_P(ExprTest, TestCompareNullable2) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -2519,7 +2495,7 @@ TEST_P(ExprTest, TestCompareWithScalarIndex) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg.get(),
             N,
@@ -2676,7 +2652,7 @@ TEST_P(ExprTest, TestCompareWithScalarIndexNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg.get(),
             N,
@@ -2833,7 +2809,7 @@ TEST_P(ExprTest, TestCompareWithScalarIndexNullable2) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg.get(),
             N,
@@ -2926,8 +2902,8 @@ TEST_P(ExprTest, test_term_pk_with_sorted) {
             offsets.emplace_back(i);
         }
     }
-    auto col_vec =
-        gen_filter_res(plan.get(), seg.get(), N, MAX_TIMESTAMP, &offsets);
+    auto col_vec = milvus::test::gen_filter_res(
+        plan.get(), seg.get(), N, MAX_TIMESTAMP, &offsets);
     BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
     EXPECT_EQ(view.size(), N / 2);
 
@@ -4025,8 +4001,8 @@ TEST(Expr, TestExprNOT) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec =
-            gen_filter_res(plan.get(), seg.get(), N, MAX_TIMESTAMP, &offsets);
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg.get(), N, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N / 2);
 
@@ -4211,8 +4187,8 @@ TEST_P(ExprTest, test_term_pk) {
             offsets.emplace_back(i);
         }
     }
-    auto col_vec =
-        gen_filter_res(plan.get(), seg.get(), N, MAX_TIMESTAMP, &offsets);
+    auto col_vec = milvus::test::gen_filter_res(
+        plan.get(), seg.get(), N, MAX_TIMESTAMP, &offsets);
     BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
     EXPECT_EQ(view.size(), N / 2);
 
@@ -4348,8 +4324,8 @@ TEST_P(ExprTest, TestConjuctExpr) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec =
-            gen_filter_res(plan.get(), seg.get(), N, MAX_TIMESTAMP, &offsets);
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg.get(), N, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N / 2);
         for (int i = 0; i < N; ++i) {
@@ -4435,8 +4411,8 @@ TEST_P(ExprTest, TestConjuctExprNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec =
-            gen_filter_res(plan.get(), seg.get(), N, MAX_TIMESTAMP, &offsets);
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg.get(), N, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N / 2);
         for (int i = 0; i < N; ++i) {
@@ -5175,7 +5151,7 @@ TEST_P(ExprTest, TestCompareWithScalarIndexMaris) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg.get(),
             N,
@@ -5327,7 +5303,7 @@ TEST_P(ExprTest, TestCompareWithScalarIndexMarisNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg.get(),
             N,
@@ -5479,7 +5455,7 @@ TEST_P(ExprTest, TestCompareWithScalarIndexMarisNullable2) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg.get(),
             N,
@@ -6212,7 +6188,7 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRange) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -7191,7 +7167,7 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -8069,7 +8045,7 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSON) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -9013,7 +8989,7 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSONNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -9110,7 +9086,7 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSONFloat) {
         for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
             offsets.emplace_back(i);
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
@@ -9167,7 +9143,7 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSONFloat) {
         for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
             offsets.emplace_back(i);
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
@@ -9271,7 +9247,7 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSONFloatNullable) {
         for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
             offsets.emplace_back(i);
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
@@ -9331,7 +9307,7 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSONFloatNullable) {
         for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
             offsets.emplace_back(i);
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
@@ -9849,7 +9825,7 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeWithScalarSortIndex) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N,
@@ -10591,7 +10567,7 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeWithScalarSortIndexNullable) {
         for (auto i = 0; i < std::min(N, 10); ++i) {
             offsets.emplace_back(i);
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N,
@@ -10829,7 +10805,7 @@ TEST_P(ExprTest, TestUnaryRangeWithJSON) {
         for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
             offsets.emplace_back(i);
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -11089,7 +11065,7 @@ TEST_P(ExprTest, TestUnaryRangeWithJSONNullable) {
         for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
             offsets.emplace_back(i);
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -11299,7 +11275,7 @@ TEST_P(ExprTest, TestTermWithJSON) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -11531,7 +11507,7 @@ TEST_P(ExprTest, TestTermWithJSONNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -11715,7 +11691,7 @@ TEST_P(ExprTest, TestExistsWithJSON) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -11942,7 +11918,7 @@ TEST_P(ExprTest, TestExistsWithJSONNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan->plan_node_->plannodes_->sources()[0]->sources()[0].get(),
             seg_promote,
             N * num_iters,
@@ -12074,7 +12050,7 @@ TEST_P(ExprTest, TestTermInFieldJson) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -12138,7 +12114,7 @@ TEST_P(ExprTest, TestTermInFieldJson) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -12202,7 +12178,7 @@ TEST_P(ExprTest, TestTermInFieldJson) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -12266,7 +12242,7 @@ TEST_P(ExprTest, TestTermInFieldJson) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -12359,7 +12335,7 @@ TEST_P(ExprTest, TestTermInFieldJsonNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -12426,7 +12402,7 @@ TEST_P(ExprTest, TestTermInFieldJsonNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -12493,7 +12469,7 @@ TEST_P(ExprTest, TestTermInFieldJsonNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -12561,7 +12537,7 @@ TEST_P(ExprTest, TestTermInFieldJsonNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -12792,7 +12768,7 @@ TEST_P(ExprTest, TestJsonContainsAny) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -12857,7 +12833,7 @@ TEST_P(ExprTest, TestJsonContainsAny) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -12922,7 +12898,7 @@ TEST_P(ExprTest, TestJsonContainsAny) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -12987,7 +12963,7 @@ TEST_P(ExprTest, TestJsonContainsAny) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -13081,7 +13057,7 @@ TEST_P(ExprTest, TestJsonContainsAnyNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -13149,7 +13125,7 @@ TEST_P(ExprTest, TestJsonContainsAnyNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -13217,7 +13193,7 @@ TEST_P(ExprTest, TestJsonContainsAnyNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -13286,7 +13262,7 @@ TEST_P(ExprTest, TestJsonContainsAnyNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -13379,7 +13355,7 @@ TEST_P(ExprTest, TestJsonContainsAll) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -13452,7 +13428,7 @@ TEST_P(ExprTest, TestJsonContainsAll) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -13524,7 +13500,7 @@ TEST_P(ExprTest, TestJsonContainsAll) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -13594,7 +13570,7 @@ TEST_P(ExprTest, TestJsonContainsAll) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -13692,7 +13668,7 @@ TEST_P(ExprTest, TestJsonContainsAllNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -13767,7 +13743,7 @@ TEST_P(ExprTest, TestJsonContainsAllNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -13842,7 +13818,7 @@ TEST_P(ExprTest, TestJsonContainsAllNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -13916,7 +13892,7 @@ TEST_P(ExprTest, TestJsonContainsAllNullable) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -14038,7 +14014,7 @@ TEST_P(ExprTest, TestJsonContainsArray) {
                 offsets.emplace_back(i);
             }
         }
-        auto col_vec = gen_filter_res(
+        auto col_vec = milvus::test::gen_filter_res(
             plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
         BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
         EXPECT_EQ(view.size(), N * num_iters / 2);
@@ -14080,10 +14056,23 @@ TEST_P(ExprTest, TestJsonContainsArray) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             std::vector<bool> res;
             ASSERT_EQ(ans, check(res, i));
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], check(res, i));
+            }
         }
     }
 
@@ -14133,9 +14122,22 @@ TEST_P(ExprTest, TestJsonContainsArray) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             ASSERT_EQ(ans, check());
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], check());
+            }
         }
     }
 
@@ -14163,10 +14165,23 @@ TEST_P(ExprTest, TestJsonContainsArray) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             std::vector<bool> res;
             ASSERT_EQ(ans, check(res, i));
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], check(res, i));
+            }
         }
     }
 
@@ -14218,10 +14233,23 @@ TEST_P(ExprTest, TestJsonContainsArray) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             std::vector<bool> res;
             ASSERT_EQ(ans, check(res, i));
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], check(res, i));
+            }
         }
     }
 
@@ -14249,10 +14277,23 @@ TEST_P(ExprTest, TestJsonContainsArray) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             std::vector<bool> res;
             ASSERT_EQ(ans, check(res, i));
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], check(res, i));
+            }
         }
     }
 }
@@ -14355,10 +14396,23 @@ TEST_P(ExprTest, TestJsonContainsArrayNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             std::vector<bool> res;
             ASSERT_EQ(ans, check(res, i, valid_data[i]));
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], check(res, i, valid_data[i]));
+            }
         }
     }
 
@@ -14392,10 +14446,23 @@ TEST_P(ExprTest, TestJsonContainsArrayNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             std::vector<bool> res;
             ASSERT_EQ(ans, check(res, i, valid_data[i]));
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], check(res, i, valid_data[i]));
+            }
         }
     }
 
@@ -14450,9 +14517,22 @@ TEST_P(ExprTest, TestJsonContainsArrayNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             ASSERT_EQ(ans, check(valid_data[i]));
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], check(valid_data[i]));
+            }
         }
     }
 
@@ -14483,10 +14563,23 @@ TEST_P(ExprTest, TestJsonContainsArrayNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             std::vector<bool> res;
             ASSERT_EQ(ans, check(res, i, valid_data[i]));
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], check(res, i, valid_data[i]));
+            }
         }
     }
 
@@ -14538,10 +14631,23 @@ TEST_P(ExprTest, TestJsonContainsArrayNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             std::vector<bool> res;
             ASSERT_EQ(ans, check(res, i));
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], check(res, i));
+            }
         }
     }
 
@@ -14569,10 +14675,23 @@ TEST_P(ExprTest, TestJsonContainsArrayNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             std::vector<bool> res;
             ASSERT_EQ(ans, check(res, i));
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], check(res, i));
+            }
         }
     }
 }
@@ -14673,9 +14792,22 @@ TEST_P(ExprTest, TestJsonContainsDiffTypeArray) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             ASSERT_EQ(ans, check());
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], check());
+            }
         }
     }
 
@@ -14701,9 +14833,22 @@ TEST_P(ExprTest, TestJsonContainsDiffTypeArray) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             ASSERT_EQ(ans, check());
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], check());
+            }
         }
     }
 }
@@ -14784,9 +14929,22 @@ TEST_P(ExprTest, TestJsonContainsDiffTypeArrayNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             ASSERT_EQ(ans, check(valid_data[i]));
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], check(valid_data[i]));
+            }
         }
     }
 
@@ -14812,9 +14970,22 @@ TEST_P(ExprTest, TestJsonContainsDiffTypeArrayNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             ASSERT_EQ(ans, check());
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], check());
+            }
         }
     }
 }
@@ -14893,9 +15064,22 @@ TEST_P(ExprTest, TestJsonContainsDiffType) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             ASSERT_EQ(ans, testcase.res);
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], testcase.res);
+            }
         }
     }
 
@@ -14920,9 +15104,22 @@ TEST_P(ExprTest, TestJsonContainsDiffType) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             ASSERT_EQ(ans, testcase.res);
+            if (i < std::min(N * num_iters, 10)) {
+                ASSERT_EQ(view[i], testcase.res);
+            }
         }
     }
 }
@@ -15003,12 +15200,28 @@ TEST_P(ExprTest, TestJsonContainsDiffTypeNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             if (!valid_data[i]) {
                 ASSERT_EQ(ans, false);
+                if (i < std::min(N * num_iters, 10)) {
+                    ASSERT_EQ(view[i], false);
+                }
             } else {
                 ASSERT_EQ(ans, testcase.res);
+                if (i < std::min(N * num_iters, 10)) {
+                    ASSERT_EQ(view[i], testcase.res);
+                }
             }
         }
     }
@@ -15034,12 +15247,28 @@ TEST_P(ExprTest, TestJsonContainsDiffTypeNullable) {
                   << std::endl;
         EXPECT_EQ(final.size(), N * num_iters);
 
+        // specify some offsets and do scalar filtering on these offsets
+        FixedVector<int64_t> offsets;
+        for (auto i = 0; i < std::min(N * num_iters, 10); ++i) {
+            offsets.emplace_back(i);
+        }
+        auto col_vec = milvus::test::gen_filter_res(
+            plan.get(), seg_promote, N * num_iters, MAX_TIMESTAMP, &offsets);
+        BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+        EXPECT_EQ(view.size(), std::min(N * num_iters, 10));
+
         for (int i = 0; i < N * num_iters; ++i) {
             auto ans = final[i];
             if (!valid_data[i]) {
                 ASSERT_EQ(ans, false);
+                if (i < std::min(N * num_iters, 10)) {
+                    ASSERT_EQ(view[i], false);
+                }
             } else {
                 ASSERT_EQ(ans, testcase.res);
+                if (i < std::min(N * num_iters, 10)) {
+                    ASSERT_EQ(view[i], testcase.res);
+                }
             }
         }
     }

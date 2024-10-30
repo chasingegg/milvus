@@ -80,7 +80,7 @@ set(MILVUS_TEST_FILES
         # test_similarity_corelation.cpp
         # test_span.cpp
         # test_storage.cpp
-        # test_string_expr.cpp
+        test_string_expr.cpp
         # test_text_match.cpp
         # test_timestamp_index.cpp
         # test_tracer.cpp
