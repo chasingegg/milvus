@@ -637,6 +637,7 @@ TEST_P(ExprTest, TestRangeNullable) {
             MAX_TIMESTAMP);
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -742,6 +743,7 @@ TEST_P(ExprTest, TestBinaryRangeJSON) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -870,6 +872,7 @@ TEST_P(ExprTest, TestBinaryRangeJSONNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -1204,6 +1207,7 @@ TEST_P(ExprTest, TestUnaryRangeJson) {
 
             // specify some offsets and do scalar filtering on these offsets
             FixedVector<int64_t> offsets;
+            offsets.reserve(N * num_iters / 2);
             for (auto i = 0; i < N * num_iters; ++i) {
                 if (i % 2 == 0) {
                     offsets.emplace_back(i);
@@ -1288,6 +1292,7 @@ TEST_P(ExprTest, TestUnaryRangeJson) {
 
             // specify some offsets and do scalar filtering on these offsets
             FixedVector<int64_t> offsets;
+            offsets.reserve(N * num_iters / 2);
             for (auto i = 0; i < N * num_iters; ++i) {
                 if (i % 2 == 0) {
                     offsets.emplace_back(i);
@@ -1447,6 +1452,7 @@ TEST_P(ExprTest, TestUnaryRangeJsonNullable) {
 
             // specify some offsets and do scalar filtering on these offsets
             FixedVector<int64_t> offsets;
+            offsets.reserve(N * num_iters / 2);
             for (auto i = 0; i < N * num_iters; ++i) {
                 if (i % 2 == 0) {
                     offsets.emplace_back(i);
@@ -1604,6 +1610,7 @@ TEST_P(ExprTest, TestTermJson) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -1699,6 +1706,7 @@ TEST_P(ExprTest, TestTermJsonNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -2066,6 +2074,7 @@ TEST_P(ExprTest, TestCompare) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -2219,6 +2228,7 @@ TEST_P(ExprTest, TestCompareNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -2372,6 +2382,7 @@ TEST_P(ExprTest, TestCompareNullable2) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -2490,6 +2501,7 @@ TEST_P(ExprTest, TestCompareWithScalarIndex) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N / 2);
         for (auto i = 0; i < N; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -2647,6 +2659,7 @@ TEST_P(ExprTest, TestCompareWithScalarIndexNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N / 2);
         for (auto i = 0; i < N; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -2804,6 +2817,7 @@ TEST_P(ExprTest, TestCompareWithScalarIndexNullable2) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N / 2);
         for (auto i = 0; i < N; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -2897,6 +2911,7 @@ TEST_P(ExprTest, test_term_pk_with_sorted) {
 
     // specify some offsets and do scalar filtering on these offsets
     FixedVector<int64_t> offsets;
+    offsets.reserve(N / 2);
     for (auto i = 0; i < N; ++i) {
         if (i % 2 == 0) {
             offsets.emplace_back(i);
@@ -3996,6 +4011,7 @@ TEST(Expr, TestExprNOT) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N / 2);
         for (auto i = 0; i < N; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -4182,6 +4198,7 @@ TEST_P(ExprTest, test_term_pk) {
 
     // specify some offsets and do scalar filtering on these offsets
     FixedVector<int64_t> offsets;
+    offsets.reserve(N / 2);
     for (auto i = 0; i < N; ++i) {
         if (i % 2 == 0) {
             offsets.emplace_back(i);
@@ -4319,6 +4336,7 @@ TEST_P(ExprTest, TestConjuctExpr) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N / 2);
         for (auto i = 0; i < N; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -4406,6 +4424,7 @@ TEST_P(ExprTest, TestConjuctExprNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N / 2);
         for (auto i = 0; i < N; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -5146,6 +5165,7 @@ TEST_P(ExprTest, TestCompareWithScalarIndexMaris) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N / 2);
         for (auto i = 0; i < N; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -5298,6 +5318,7 @@ TEST_P(ExprTest, TestCompareWithScalarIndexMarisNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N / 2);
         for (auto i = 0; i < N; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -5450,6 +5471,7 @@ TEST_P(ExprTest, TestCompareWithScalarIndexMarisNullable2) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N / 2);
         for (auto i = 0; i < N; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -6183,6 +6205,7 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRange) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -7162,6 +7185,7 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -8040,6 +8064,7 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSON) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -8984,6 +9009,7 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeJSONNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -9820,6 +9846,7 @@ TEST_P(ExprTest, TestBinaryArithOpEvalRangeWithScalarSortIndex) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N / 2);
         for (auto i = 0; i < N; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -11270,6 +11297,7 @@ TEST_P(ExprTest, TestTermWithJSON) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -11502,6 +11530,7 @@ TEST_P(ExprTest, TestTermWithJSONNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -11686,6 +11715,7 @@ TEST_P(ExprTest, TestExistsWithJSON) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -11913,6 +11943,7 @@ TEST_P(ExprTest, TestExistsWithJSONNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -12045,6 +12076,7 @@ TEST_P(ExprTest, TestTermInFieldJson) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -12109,6 +12141,7 @@ TEST_P(ExprTest, TestTermInFieldJson) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -12173,6 +12206,7 @@ TEST_P(ExprTest, TestTermInFieldJson) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -12237,6 +12271,7 @@ TEST_P(ExprTest, TestTermInFieldJson) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -12330,6 +12365,7 @@ TEST_P(ExprTest, TestTermInFieldJsonNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -12397,6 +12433,7 @@ TEST_P(ExprTest, TestTermInFieldJsonNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -12464,6 +12501,7 @@ TEST_P(ExprTest, TestTermInFieldJsonNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -12532,6 +12570,7 @@ TEST_P(ExprTest, TestTermInFieldJsonNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -12763,6 +12802,7 @@ TEST_P(ExprTest, TestJsonContainsAny) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -12828,6 +12868,7 @@ TEST_P(ExprTest, TestJsonContainsAny) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -12893,6 +12934,7 @@ TEST_P(ExprTest, TestJsonContainsAny) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -12958,6 +13000,7 @@ TEST_P(ExprTest, TestJsonContainsAny) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -13052,6 +13095,7 @@ TEST_P(ExprTest, TestJsonContainsAnyNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -13120,6 +13164,7 @@ TEST_P(ExprTest, TestJsonContainsAnyNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -13188,6 +13233,7 @@ TEST_P(ExprTest, TestJsonContainsAnyNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -13257,6 +13303,7 @@ TEST_P(ExprTest, TestJsonContainsAnyNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -13350,6 +13397,7 @@ TEST_P(ExprTest, TestJsonContainsAll) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -13423,6 +13471,7 @@ TEST_P(ExprTest, TestJsonContainsAll) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -13495,6 +13544,7 @@ TEST_P(ExprTest, TestJsonContainsAll) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -13565,6 +13615,7 @@ TEST_P(ExprTest, TestJsonContainsAll) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -13663,6 +13714,7 @@ TEST_P(ExprTest, TestJsonContainsAllNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -13738,6 +13790,7 @@ TEST_P(ExprTest, TestJsonContainsAllNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -13813,6 +13866,7 @@ TEST_P(ExprTest, TestJsonContainsAllNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -13887,6 +13941,7 @@ TEST_P(ExprTest, TestJsonContainsAllNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -14009,6 +14064,7 @@ TEST_P(ExprTest, TestJsonContainsArray) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);

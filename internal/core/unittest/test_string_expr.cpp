@@ -292,6 +292,7 @@ TEST(StringExpr, Term) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -384,6 +385,7 @@ TEST(StringExpr, TermNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -521,6 +523,7 @@ TEST(StringExpr, Compare) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -669,6 +672,7 @@ TEST(StringExpr, CompareNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -821,6 +825,7 @@ TEST(StringExpr, CompareNullable2) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -943,6 +948,7 @@ TEST(StringExpr, UnaryRange) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -1070,6 +1076,7 @@ TEST(StringExpr, UnaryRangeNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -1207,6 +1214,7 @@ TEST(StringExpr, BinaryRange) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
@@ -1355,6 +1363,7 @@ TEST(StringExpr, BinaryRangeNullable) {
 
         // specify some offsets and do scalar filtering on these offsets
         FixedVector<int64_t> offsets;
+        offsets.reserve(N * num_iters / 2);
         for (auto i = 0; i < N * num_iters; ++i) {
             if (i % 2 == 0) {
                 offsets.emplace_back(i);
