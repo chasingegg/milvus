@@ -41,7 +41,7 @@ StringChunk::ViewsByOffsets(const FixedVector<int64_t>& offsets) {
         string_size = *reinterpret_cast<uint32_t*>(pos);
         pos += sizeof(uint32_t);
         ret.emplace_back(std::string_view(pos, string_size));
-        valid_res.emplace_back(valid_[offsets[i]]);
+        valid_res.emplace_back(isValid(offsets[i]));
     }
     return {ret, valid_res};
 }

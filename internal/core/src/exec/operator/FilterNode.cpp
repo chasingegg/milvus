@@ -165,12 +165,11 @@ PhyFilterNode::GetOutput() {
                         }
                         search_result.seg_offsets_[pos] = offsets[i];
                         search_result.distances_[pos] = diss[i];
-                        std::cout << offsets[i] << " " << diss[i] << std::endl;
                         ++topk;
                         if (topk == unity_topk) {
                             break;
                         }
-                    } 
+                    }
                 }
                 if (topk == unity_topk) {
                     break;

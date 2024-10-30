@@ -707,7 +707,7 @@ class SingleChunkVariableColumn : public SingleChunkColumnBase {
         valid.reserve(offsets.size());
         for (size_t i = 0; i < offsets.size(); ++i) {
             res.emplace_back(RawAt(offsets[i]));
-            valid.emplace_back(valid_data_[offsets[i]]);
+            valid.emplace_back(IsValid(offsets[i]));
         }
         return {res, valid};
     }
