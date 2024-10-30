@@ -46,7 +46,7 @@ require (
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.25.0
-	golang.org/x/exp v0.0.0-20230728194245-b0cb94b80691
+	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842
 	golang.org/x/net v0.27.0
 	golang.org/x/oauth2 v0.21.0
 	golang.org/x/sync v0.7.0
@@ -57,7 +57,6 @@ require (
 
 require (
 	cloud.google.com/go/storage v1.43.0
-	github.com/antlr4-go/antlr/v4 v4.13.1
 	github.com/bits-and-blooms/bitset v1.10.0
 	github.com/bytedance/sonic v1.12.2
 	github.com/cenkalti/backoff/v4 v4.2.1
