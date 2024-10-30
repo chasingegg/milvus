@@ -46,6 +46,7 @@ PhyFilterNode::IsFinished() {
     return is_finished_;
 }
 
+template <bool large_is_better>
 inline size_t
 find_binsert_position(const std::vector<float>& distances,
                       size_t lo,
@@ -53,10 +54,18 @@ find_binsert_position(const std::vector<float>& distances,
                       float dist) {
     while (lo < hi) {
         size_t mid = (lo + hi) >> 1;
-        if (distances[mid] > dist) {
-            hi = mid;
+        if constexpr (large_is_better) {
+            if (distances[mid] < dist) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
         } else {
-            lo = mid + 1;
+            if (distances[mid] > dist) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
         }
     }
     return lo;
@@ -78,6 +87,8 @@ PhyFilterNode::GetOutput() {
         std::chrono::high_resolution_clock::now();
 
     milvus::SearchResult search_result = query_context_->get_search_result();
+    knowhere::MetricType metric_type = query_context_->get_metric_type();
+    bool large_is_better = PositivelyRelated(metric_type);
     if (search_result.vector_iterators_.has_value()) {
         AssertInfo(search_result.vector_iterators_.value().size() ==
                        search_result.total_nq_,
@@ -88,18 +99,15 @@ PhyFilterNode::GetOutput() {
         int64_t unity_topk = search_result.unity_topK_;
         AssertInfo(nq = search_result.vector_iterators_.value().size(),
                    "nq and iterator not equal size");
-        // LOG_INFO("nq {}, unity topk {}, size {}",
-        //          nq_index,
-        //          unity_topk,
-        //          search_result.vector_iterators_.value().size());
-        search_result.seg_offsets_.resize(nq * unity_topk);
+        search_result.seg_offsets_.resize(nq * unity_topk, INVALID_SEG_OFFSET);
         search_result.distances_.resize(nq * unity_topk);
         for (auto& iterator : search_result.vector_iterators_.value()) {
             EvalCtx eval_ctx(operator_context_->get_exec_context(),
                              exprs_.get());
             int topk = 0;
             while (iterator->HasNext() && topk < unity_topk) {
-                FixedVector<int64_t> offsets, diss;
+                FixedVector<int64_t> offsets;
+                FixedVector<float> diss;
                 offsets.reserve(unity_topk);
                 diss.reserve(unity_topk);
                 while (iterator->HasNext()) {
@@ -136,11 +144,17 @@ PhyFilterNode::GetOutput() {
                 Assert(bitsetview.size() <= unity_topk);
                 for (auto i = 0; i < bitsetview.size(); ++i) {
                     if (bitsetview[i] > 0) {
-                        auto pos =
-                            find_binsert_position(search_result.distances_,
-                                                  nq_index * unity_topk,
-                                                  nq_index * unity_topk + topk,
-                                                  diss[i]);
+                        auto pos = large_is_better
+                                       ? find_binsert_position<true>(
+                                             search_result.distances_,
+                                             nq_index * unity_topk,
+                                             nq_index * unity_topk + topk,
+                                             diss[i])
+                                       : find_binsert_position<false>(
+                                             search_result.distances_,
+                                             nq_index * unity_topk,
+                                             nq_index * unity_topk + topk,
+                                             diss[i]);
                         if (topk > pos) {
                             std::memmove(&search_result.distances_[pos + 1],
                                          &search_result.distances_[pos],
@@ -151,11 +165,12 @@ PhyFilterNode::GetOutput() {
                         }
                         search_result.seg_offsets_[pos] = offsets[i];
                         search_result.distances_[pos] = diss[i];
+                        std::cout << offsets[i] << " " << diss[i] << std::endl;
                         ++topk;
                         if (topk == unity_topk) {
                             break;
                         }
-                    }
+                    } 
                 }
                 if (topk == unity_topk) {
                     break;
