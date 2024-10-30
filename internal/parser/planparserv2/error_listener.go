@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/antlr4-go/antlr/v4"
+	"github.com/antlr/antlr4/runtime/Go/antlr"
 )
 
 type errorListener interface {
