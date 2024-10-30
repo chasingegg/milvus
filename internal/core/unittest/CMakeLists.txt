@@ -24,7 +24,7 @@ add_definitions(-DMILVUS_TEST_SEGCORE_YAML_PATH="${CMAKE_SOURCE_DIR}/unittest/te
 set(MILVUS_TEST_FILES
         init_gtest.cpp
 
-        # test_always_true_expr.cpp
+        test_always_true_expr.cpp
         # test_array_bitmap_index.cpp
         # test_array_inverted_index.cpp
         # test_bf.cpp

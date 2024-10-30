@@ -112,6 +112,7 @@ gen_filter_res(milvus::plan::PlanNode* plan_node,
                uint64_t timestamp,
                FixedVector<int64_t>* offsets = nullptr) {
     auto filter_node = dynamic_cast<milvus::plan::FilterBitsNode*>(plan_node);
+    assert(filter_node != nullptr);
     std::vector<milvus::expr::TypedExprPtr> filters;
     filters.emplace_back(filter_node->filter());
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
