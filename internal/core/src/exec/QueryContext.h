@@ -237,7 +237,8 @@ class QueryContext : public Context {
 
     std::optional<int64_t>
     get_iterator_batch_size() {
-        return milvus::index::GetValueFromConfig<int64_t>(search_info_.search_params_, "batch_size"); 
+        return milvus::index::GetValueFromConfig<int64_t>(
+            search_info_.search_params_, "batch_size");
     }
 
     const query::PlaceholderGroup*

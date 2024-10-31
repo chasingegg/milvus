@@ -90,7 +90,8 @@ PhyFilterNode::GetOutput() {
     int64_t nq = search_result.total_nq_;
     int64_t unity_topk = search_result.unity_topK_;
     knowhere::MetricType metric_type = query_context_->get_metric_type();
-    int64_t batch_size = query_context_->get_iterator_batch_size().value_or(unity_topk);
+    int64_t batch_size =
+        query_context_->get_iterator_batch_size().value_or(unity_topk);
     bool large_is_better = PositivelyRelated(metric_type);
     if (search_result.vector_iterators_.has_value()) {
         AssertInfo(search_result.vector_iterators_.value().size() ==
@@ -171,7 +172,7 @@ PhyFilterNode::GetOutput() {
                         if (topk == unity_topk) {
                             break;
                         }
-                    } 
+                    }
                 }
                 if (topk == unity_topk) {
                     break;
