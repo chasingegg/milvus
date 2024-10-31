@@ -382,7 +382,7 @@ class SegmentExpr : public Expr {
         ValTypes... values) {
         int64_t processed_size = 0;
 
-        if (is_index_mode_) {
+        if (is_index_mode_ && num_data_chunk_ == 0) {
             return ProcessIndexChunkByOffsets<T>(
                 func, skip_func, input, res, valid_res, values...);
         }

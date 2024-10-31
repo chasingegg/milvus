@@ -688,6 +688,7 @@ class SingleChunkVariableColumn : public SingleChunkColumnBase {
     std::pair<std::vector<std::string_view>, FixedVector<bool>>
     StringViews() const override {
         std::vector<std::string_view> res;
+        res.reserve(num_rows_);
         char* pos = data_;
         for (size_t i = 0; i < num_rows_; ++i) {
             uint32_t size;
@@ -715,6 +716,7 @@ class SingleChunkVariableColumn : public SingleChunkColumnBase {
     [[nodiscard]] std::vector<ViewType>
     Views() const {
         std::vector<ViewType> res;
+        res.reserve(num_rows_);
         char* pos = data_;
         for (size_t i = 0; i < num_rows_; ++i) {
             uint32_t size;

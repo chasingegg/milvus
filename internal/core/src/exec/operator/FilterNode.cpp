@@ -87,7 +87,10 @@ PhyFilterNode::GetOutput() {
         std::chrono::high_resolution_clock::now();
 
     milvus::SearchResult search_result = query_context_->get_search_result();
+    int64_t nq = search_result.total_nq_;
+    int64_t unity_topk = search_result.unity_topK_;
     knowhere::MetricType metric_type = query_context_->get_metric_type();
+    int64_t batch_size = query_context_->get_iterator_batch_size().value_or(unity_topk);
     bool large_is_better = PositivelyRelated(metric_type);
     if (search_result.vector_iterators_.has_value()) {
         AssertInfo(search_result.vector_iterators_.value().size() ==
@@ -95,8 +98,7 @@ PhyFilterNode::GetOutput() {
                    "Vector Iterators' count must be equal to total_nq_, Check "
                    "your code");
         int nq_index = 0;
-        int64_t nq = search_result.total_nq_;
-        int64_t unity_topk = search_result.unity_topK_;
+
         AssertInfo(nq = search_result.vector_iterators_.value().size(),
                    "nq and iterator not equal size");
         search_result.seg_offsets_.resize(nq * unity_topk, INVALID_SEG_OFFSET);
@@ -108,8 +110,8 @@ PhyFilterNode::GetOutput() {
             while (iterator->HasNext() && topk < unity_topk) {
                 FixedVector<int64_t> offsets;
                 FixedVector<float> diss;
-                offsets.reserve(unity_topk);
-                diss.reserve(unity_topk);
+                offsets.reserve(batch_size);
+                diss.reserve(batch_size);
                 while (iterator->HasNext()) {
                     auto offset_dis_pair = iterator->Next();
                     AssertInfo(
@@ -121,7 +123,7 @@ PhyFilterNode::GetOutput() {
                     auto dis = offset_dis_pair.value().second;
                     offsets.emplace_back(offset);
                     diss.emplace_back(dis);
-                    if (offsets.size() == unity_topk) {
+                    if (offsets.size() == batch_size) {
                         break;
                     }
                 }
@@ -141,7 +143,7 @@ PhyFilterNode::GetOutput() {
                 auto col_vec_size = col_vec->size();
                 TargetBitmapView bitsetview(col_vec->GetRawData(),
                                             col_vec_size);
-                Assert(bitsetview.size() <= unity_topk);
+                Assert(bitsetview.size() <= batch_size);
                 for (auto i = 0; i < bitsetview.size(); ++i) {
                     if (bitsetview[i] > 0) {
                         auto pos = large_is_better
@@ -169,7 +171,7 @@ PhyFilterNode::GetOutput() {
                         if (topk == unity_topk) {
                             break;
                         }
-                    }
+                    } 
                 }
                 if (topk == unity_topk) {
                     break;
