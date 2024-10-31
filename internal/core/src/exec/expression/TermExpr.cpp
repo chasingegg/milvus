@@ -266,9 +266,9 @@ PhyTermFilterExpr::ExecTermArrayVariableInField(OffsetVector* input) {
         TargetBitmapView res,
         TargetBitmapView valid_res,
         const ValueType& target_val) {
-        auto executor = [&](size_t i) {
-            for (int i = 0; i < data[i].length(); i++) {
-                auto val = data[i].template get_data<GetType>(i);
+        auto executor = [&](size_t offset) {
+            for (int i = 0; i < data[offset].length(); i++) {
+                auto val = data[offset].template get_data<GetType>(i);
                 if (val == target_val) {
                     return true;
                 }

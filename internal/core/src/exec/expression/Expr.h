@@ -220,7 +220,7 @@ class SegmentExpr : public Expr {
 
     void
     MoveCursor() override {
-        // when we specify input, do not states
+        // when we specify input, do not maintain states
         if (has_input_) {
             if (is_index_mode_) {
                 MoveCursorForIndex();
