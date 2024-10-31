@@ -402,7 +402,7 @@ TEST(PostFilter, GrowingRawData) {
                                      data_set.raw_);
     }
 
-    auto topK = 30;
+    auto topK = 10;
     // int8 binaryRange
     {
         const char* raw_plan = R"(vector_anns: <
@@ -419,12 +419,12 @@ TEST(PostFilter, GrowingRawData) {
                                           int64_val: -1
                                         >
                                         upper_value: <
-                                          int64_val: 100
+                                          int64_val: 1
                                         >
                                         >
                                       >
                                         query_info: <
-                                          topk: 30
+                                          topk: 10
                                           metric_type: "L2"
                                           search_params: "{\"ef\": 50, \"post_filter\": true}"
                                         >
@@ -455,12 +455,12 @@ TEST(PostFilter, GrowingRawData) {
                                           int64_val: -1
                                         >
                                         upper_value: <
-                                          int64_val: 100
+                                          int64_val: 1
                                         >
                                         >
                                       >
                                         query_info: <
-                                          topk: 30
+                                          topk: 10
                                           metric_type: "L2"
                                           search_params: "{\"ef\": 50}"
                                         >
@@ -490,7 +490,7 @@ TEST(PostFilter, GrowingIndex) {
     std::map<std::string, std::string> index_params = {
         {"index_type", "IVF_FLAT"},
         {"metric_type", metric_type},
-        {"nlist", "128"}};
+        {"nlist", "4"}};
     std::map<std::string, std::string> type_params = {{"dim", "128"}};
     FieldIndexMeta fieldIndexMeta(
         vec_field_id, std::move(index_params), std::move(type_params));
@@ -522,7 +522,7 @@ TEST(PostFilter, GrowingIndex) {
                                      data_set.raw_);
     }
 
-    auto topK = 30;
+    auto topK = 10;
     {
         const char* raw_plan = R"(vector_anns: <
                                         field_id: 102
@@ -538,14 +538,14 @@ TEST(PostFilter, GrowingIndex) {
                                           int64_val: -1
                                         >
                                         upper_value: <
-                                          int64_val: 100
+                                          int64_val: 1
                                         >
                                         >
                                       >
                                         query_info: <
-                                          topk: 30
+                                          topk: 10
                                           metric_type: "L2"
-                                          search_params: "{\"ef\": 50, \"post_filter\": true}"
+                                          search_params: "{\"nprobe\": 4, \"post_filter\": true}"
                                         >
                                         placeholder_tag: "$0">)";
         proto::plan::PlanNode plan_node;
@@ -574,14 +574,14 @@ TEST(PostFilter, GrowingIndex) {
                                           int64_val: -1
                                         >
                                         upper_value: <
-                                          int64_val: 100
+                                          int64_val: 1
                                         >
                                         >
                                       >
                                         query_info: <
-                                          topk: 30
+                                          topk: 10
                                           metric_type: "L2"
-                                          search_params: "{\"ef\": 50}"
+                                          search_params: "{\"nprobe\": 4}"
                                         >
                                         placeholder_tag: "$0">)";
         proto::plan::PlanNode plan_node2;

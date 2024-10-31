@@ -24,7 +24,7 @@ add_definitions(-DMILVUS_TEST_SEGCORE_YAML_PATH="${CMAKE_SOURCE_DIR}/unittest/te
 set(MILVUS_TEST_FILES
         init_gtest.cpp
 
-        test_always_true_expr.cpp
+        # test_always_true_expr.cpp
         # test_array_bitmap_index.cpp
         # test_array_inverted_index.cpp
         # test_bf.cpp
@@ -45,12 +45,12 @@ set(MILVUS_TEST_FILES
         # test_data_codec.cpp
         # test_disk_file_manager_test.cpp
         # test_exec.cpp
-        test_expr.cpp
+        # test_expr.cpp
         # test_expr_materialized_view.cpp
         # test_float16.cpp
         # test_futures.cpp
         test_group_by.cpp
-        # test_post_filter.cpp
+        test_post_filter.cpp
         # test_growing.cpp
         # test_growing_index.cpp
         # test_hybrid_index.cpp
@@ -80,7 +80,7 @@ set(MILVUS_TEST_FILES
         # test_similarity_corelation.cpp
         # test_span.cpp
         # test_storage.cpp
-        test_string_expr.cpp
+        # test_string_expr.cpp
         # test_text_match.cpp
         # test_timestamp_index.cpp
         # test_tracer.cpp

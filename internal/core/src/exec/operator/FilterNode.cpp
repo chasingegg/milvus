@@ -128,10 +128,6 @@ PhyFilterNode::GetOutput() {
                         break;
                     }
                 }
-                // for (int j = 0; j < offsets.size(); ++j) {
-                //     LOG_INFO("offset {}: {}", j, offsets[j]);
-                // }
-                // auto x = std::make_shared<ColumnVector>(std::move(offsets));
                 eval_ctx.set_input(&offsets);
                 exprs_->Eval(0, 1, true, eval_ctx, results_);
                 AssertInfo(
