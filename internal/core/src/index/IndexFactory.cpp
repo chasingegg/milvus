@@ -138,8 +138,7 @@ IndexFactory::VecIndexLoadResource(
     request.final_memory_cost = resource.value().memoryCost;
     if (knowhere::UseDiskLoad(index_type, index_version) || mmaped) {
         request.max_disk_cost = resource.value().diskCost;
-        request.max_memory_cost =
-            std::max(resource.value().memoryCost, download_buffer_size_gb);
+        request.max_memory_cost = std::max(resource.value().memoryCost, 0.0f);
     } else {
         request.max_disk_cost = 0;
         request.max_memory_cost = 2 * resource.value().memoryCost;

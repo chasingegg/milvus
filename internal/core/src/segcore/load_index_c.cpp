@@ -217,7 +217,6 @@ EstimateLoadIndexResource(CLoadIndexInfo c_load_index_info) {
             index_params.count("index_type") > 0 ? true : false;
         AssertInfo(find_index_type == true,
                    "Can't find index type in index_params");
-
         LoadResourceRequest request =
             milvus::index::IndexFactory::GetInstance().IndexLoadResource(
                 field_type,
@@ -225,6 +224,8 @@ EstimateLoadIndexResource(CLoadIndexInfo c_load_index_info) {
                 load_index_info->index_size,
                 index_params,
                 load_index_info->enable_mmap);
+        std::cout << "index size " << load_index_info->index_size
+                  << " max memory " << request.max_memory_cost << std::endl;
         return request;
     } catch (std::exception& e) {
         PanicInfo(milvus::UnexpectedError,
