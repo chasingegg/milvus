@@ -1723,7 +1723,7 @@ func getResourceUsageEstimateOfSegment(schema *schemapb.CollectionSchema, loadIn
 		segmentMemorySize += uint64(float64(memSize) * expansionFactor)
 	}
 	return &ResourceUsage{
-		MemorySize:     segmentMemorySize + indexMemorySize,
+		MemorySize:     uint64(indexMemorySize/10),
 		DiskSize:       segmentDiskSize,
 		MmapFieldCount: mmapFieldCount,
 	}, nil
