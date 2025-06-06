@@ -26,6 +26,7 @@
 #include "log/Log.h"
 #include "storage/ChunkManager.h"
 #include "storage/Types.h"
+#include "filemanager/FileManager.h"
 
 namespace milvus::storage {
 
@@ -71,7 +72,7 @@ struct FileManagerContext {
         return false;
 #define FILEMANAGER_END }
 
-class FileManagerImpl : public knowhere::FileManager {
+class FileManagerImpl : public milvus::FileManager {
  public:
     explicit FileManagerImpl(const FieldDataMeta& field_mata,
                              IndexMeta index_meta)
@@ -86,7 +87,7 @@ class FileManagerImpl : public knowhere::FileManager {
      * @return false if any error, or return true.
      */
     virtual bool
-    LoadFile(const std::string& filename) noexcept = 0;
+    LoadFile(const std::string& filename) override = 0;
 
     /**
      * @brief Add file to FileManager to manipulate it.
@@ -95,7 +96,7 @@ class FileManagerImpl : public knowhere::FileManager {
      * @return false if any error, or return true.
      */
     virtual bool
-    AddFile(const std::string& filename) noexcept = 0;
+    AddFile(const std::string& filename) override = 0;
 
     /**
      * @brief Check if a file exists.
@@ -104,7 +105,7 @@ class FileManagerImpl : public knowhere::FileManager {
      * @return std::nullopt if any error, or return if the file exists.
      */
     virtual std::optional<bool>
-    IsExisted(const std::string& filename) noexcept = 0;
+    IsExisted(const std::string& filename) override = 0;
 
     /**
      * @brief Delete a file from FileManager.
@@ -113,7 +114,13 @@ class FileManagerImpl : public knowhere::FileManager {
      * @return false if any error, or return true.
      */
     virtual bool
-    RemoveFile(const std::string& filename) noexcept = 0;
+    RemoveFile(const std::string& filename) override = 0;
+
+    virtual std::shared_ptr<InputStream>
+    OpenInputStream(const std::string& filename) override = 0;
+
+    virtual std::shared_ptr<OutputStream>
+    OpenOutputStream(const std::string& filename) override = 0;
 
  public:
     virtual std::string

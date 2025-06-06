@@ -48,6 +48,12 @@ class DiskFileManagerImpl : public FileManagerImpl {
     bool
     RemoveFile(const std::string& filename) noexcept override;
 
+    std::shared_ptr<InputStream>
+    OpenInputStream(const std::string& filename) override;
+
+    std::shared_ptr<OutputStream>
+    OpenOutputStream(const std::string& filename) override;
+
  public:
     bool
     AddTextLog(const std::string& filename) noexcept;

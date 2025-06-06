@@ -46,6 +46,9 @@
 #include "storage/Types.h"
 #include "storage/Util.h"
 
+#include "storage/RemoteOutputStream.h"
+#include "storage/RemoteInputStream.h"
+
 namespace milvus::storage {
 DiskFileManagerImpl::DiskFileManagerImpl(
     const FileManagerContext& fileManagerContext)
@@ -142,6 +145,32 @@ DiskFileManagerImpl::AddFileInternal(
 
     return true;
 }  // namespace knowhere
+
+std::shared_ptr<InputStream>
+DiskFileManagerImpl::OpenInputStream(const std::string& filename) {
+    auto local_file_name = GetFileName(filename);
+    auto remote_file_path = GetRemoteIndexPath(local_file_name, 0);
+
+    auto fs = milvus_storage::ArrowFileSystemSingleton::GetInstance()
+                      .GetArrowFileSystem();
+
+    auto remote_file = fs->OpenInputFile(remote_file_path);
+    AssertInfo(remote_file.ok(), "failed to open remote file");
+    return std::make_shared<milvus::storage::RemoteInputStream>(remote_file.ValueOrDie());
+}
+
+std::shared_ptr<OutputStream>
+DiskFileManagerImpl::OpenOutputStream(const std::string& filename) {
+    auto local_file_name = GetFileName(filename);
+    auto remote_file_path = GetRemoteIndexPath(local_file_name, 0);
+
+    auto fs = milvus_storage::ArrowFileSystemSingleton::GetInstance()
+                      .GetArrowFileSystem();
+
+    auto remote_stream = fs->OpenOutputStream(remote_file_path);
+    AssertInfo(remote_stream.ok(), "failed to open remote stream");
+    return std::make_shared<milvus::storage::RemoteOutputStream>(remote_stream.ValueOrDie());
+}
 
 bool
 DiskFileManagerImpl::AddFile(const std::string& file) noexcept {

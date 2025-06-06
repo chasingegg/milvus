@@ -45,6 +45,12 @@ class MemFileManagerImpl : public FileManagerImpl {
     virtual bool
     RemoveFile(const std::string& filename) noexcept;
 
+    virtual std::shared_ptr<InputStream>
+    OpenInputStream(const std::string& filename) override;
+
+    virtual std::shared_ptr<OutputStream>
+    OpenOutputStream(const std::string& filename) override;
+
  public:
     virtual std::string
     GetName() const {
