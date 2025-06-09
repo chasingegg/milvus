@@ -116,6 +116,9 @@ class FileManagerImpl : public milvus::FileManager {
     virtual bool
     RemoveFile(const std::string& filename) override = 0;
 
+    virtual bool
+    AddFileMeta(const FileMeta& file_meta) override = 0;
+
     virtual std::shared_ptr<InputStream>
     OpenInputStream(const std::string& filename) override = 0;
 
@@ -160,6 +163,17 @@ class FileManagerImpl : public milvus::FileManager {
                std::to_string(index_meta_.index_version) + "/" +
                std::to_string(field_meta_.partition_id) + "/" +
                std::to_string(field_meta_.segment_id);
+    }
+
+    virtual std::string
+    GetRemoteIndexFilePrefixV2() const {
+        boost::filesystem::path bucket = rcm_->GetBucketName();
+        std::string v1_prefix = GetRemoteIndexObjectPrefix();
+        if (bucket.empty()) {
+            return v1_prefix;
+        } else {
+            return (bucket / v1_prefix).string();
+        }   
     }
 
     virtual std::string

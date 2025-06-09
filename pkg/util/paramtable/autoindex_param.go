@@ -92,7 +92,7 @@ func (p *AutoIndexConfig) init(base *BaseTable) {
 	p.SparseIndexParams = ParamItem{
 		Key:          "autoIndex.params.sparse.build",
 		Version:      "2.4.5",
-		DefaultValue: `{"index_type": "SPARSE_INVERTED_INDEX", "metric_type": "IP"}`,
+		DefaultValue: `{"index_type": "SPARSE_INVERTED_INDEX_DEPRECATED", "metric_type": "IP"}`,
 		Formatter:    GetBuildParamFormatter(SparseFloatVectorDefaultMetricType, "autoIndex.params.sparse.build"),
 		Export:       true,
 	}

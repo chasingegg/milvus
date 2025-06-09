@@ -93,6 +93,11 @@ MemFileManagerImpl::OpenOutputStream(const std::string& filename) {
 }
 
 bool
+MemFileManagerImpl::AddFileMeta(const FileMeta& file_meta) {
+    return true;
+}
+
+bool
 MemFileManagerImpl::AddFile(const BinarySet& binary_set) {
     return AddBinarySet(binary_set, GetRemoteIndexObjectPrefix());
 }
