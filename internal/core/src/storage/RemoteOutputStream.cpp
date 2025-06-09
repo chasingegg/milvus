@@ -9,7 +9,7 @@ RemoteOutputStream::RemoteOutputStream(std::shared_ptr<arrow::io::OutputStream>&
 }
 
 size_t
-RemoteOutputStream::Tell() {
+RemoteOutputStream::Tell() const {
     auto status = output_stream_->Tell();
     AssertInfo(status.ok(), "Failed to tell output stream");
     return status.ValueOrDie();

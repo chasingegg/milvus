@@ -156,7 +156,7 @@ DiskFileManagerImpl::OpenInputStream(const std::string& filename) {
 
     auto remote_file = fs->OpenInputFile(remote_file_path);
     AssertInfo(remote_file.ok(), "failed to open remote file");
-    return std::make_shared<milvus::storage::RemoteInputStream>(remote_file.ValueOrDie());
+    return std::make_shared<milvus::storage::RemoteInputStream>(std::move(remote_file.ValueOrDie()));
 }
 
 std::shared_ptr<OutputStream>
@@ -169,7 +169,7 @@ DiskFileManagerImpl::OpenOutputStream(const std::string& filename) {
 
     auto remote_stream = fs->OpenOutputStream(remote_file_path);
     AssertInfo(remote_stream.ok(), "failed to open remote stream");
-    return std::make_shared<milvus::storage::RemoteOutputStream>(remote_stream.ValueOrDie());
+    return std::make_shared<milvus::storage::RemoteOutputStream>(std::move(remote_stream.ValueOrDie()));
 }
 
 bool

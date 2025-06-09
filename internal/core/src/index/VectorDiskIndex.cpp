@@ -27,6 +27,7 @@
 #include "common/Consts.h"
 #include "common/RangeSearchHelper.h"
 #include "indexbuilder/types.h"
+#include "filemanager/FileManager.h"
 
 namespace milvus::index {
 
@@ -59,7 +60,7 @@ VectorDiskAnnIndex<T>::VectorDiskAnnIndex(
     CheckCompatible(version);
     local_chunk_manager->CreateDir(local_index_path_prefix);
     auto diskann_index_pack =
-        knowhere::Pack(std::shared_ptr<knowhere::FileManager>(file_manager_));
+        knowhere::Pack(std::shared_ptr<milvus::FileManager>(file_manager_));
     auto get_index_obj = knowhere::IndexFactory::Instance().Create<T>(
         GetIndexType(), version, diskann_index_pack);
     if (get_index_obj.has_value()) {

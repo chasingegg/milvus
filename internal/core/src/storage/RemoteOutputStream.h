@@ -12,7 +12,7 @@ class RemoteOutputStream : public milvus::OutputStream {
     ~RemoteOutputStream() override = default;
 
     size_t
-    Tell() override;
+    Tell() const override;
 
     size_t
     Write(const void* data, size_t size) override;
