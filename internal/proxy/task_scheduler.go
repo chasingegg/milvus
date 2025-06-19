@@ -498,6 +498,9 @@ func (sched *taskScheduler) processTask(t task, q taskQueue) {
 		WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), t.Type().String()).
 		Observe(float64(waitDuration.Milliseconds()))
 
+	start := time.Now()
+
+
 	err := t.PreExecute(ctx)
 
 	defer func() {
@@ -524,6 +527,8 @@ func (sched *taskScheduler) processTask(t task, q taskQueue) {
 		log.Ctx(ctx).Warn("Failed to post-execute task: ", zap.Error(err))
 		return
 	}
+	latencyNs := time.Since(start).Nanoseconds()
+	log.Info("FUCK search task execute done(ms)", zap.Float64("latencyNs", float64(latencyNs)/1000000.0))
 }
 
 // definitionLoop schedules the ddl tasks.

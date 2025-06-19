@@ -2749,7 +2749,7 @@ type queryNodeConfig struct {
 	TieredWarmupScalarField        ParamItem `refreshable:"false"`
 	TieredWarmupScalarIndex        ParamItem `refreshable:"false"`
 	TieredWarmupVectorField        ParamItem `refreshable:"false"`
-	TieredWarmupVectorIndex        ParamItem `refreshable:"false"`
+	TieredWarmupVectorIndex        ParamItem `refreshable:"true"`
 	TieredMemoryLowWatermarkRatio  ParamItem `refreshable:"false"`
 	TieredMemoryHighWatermarkRatio ParamItem `refreshable:"false"`
 	TieredMemoryMaxRatio           ParamItem `refreshable:"false"`
