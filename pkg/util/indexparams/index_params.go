@@ -368,15 +368,15 @@ func SetDiskIndexLoadParams(params *paramtable.ComponentParam, indexParams map[s
 }
 
 func AppendPrepareLoadParams(params *paramtable.ComponentParam, indexParams map[string]string) error {
-	if params.AutoIndexConfig.Enable.GetAsBool() { // `enable` only for cloud instance.
+	// if params.AutoIndexConfig.Enable.GetAsBool() { // `enable` only for cloud instance.
 		// override prepare params by
-		for k, v := range params.AutoIndexConfig.PrepareParams.GetAsJSONMap() {
-			indexParams[k] = v
-		}
-
-		for k, v := range params.AutoIndexConfig.LoadAdaptParams.GetAsJSONMap() {
-			indexParams[k] = v
-		}
+	for k, v := range params.AutoIndexConfig.PrepareParams.GetAsJSONMap() {
+		indexParams[k] = v
 	}
+
+	for k, v := range params.AutoIndexConfig.LoadAdaptParams.GetAsJSONMap() {
+		indexParams[k] = v
+	}
+	// }
 	return nil
 }

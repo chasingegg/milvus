@@ -321,7 +321,7 @@ func (sd *shardDelegator) search(ctx context.Context, req *querypb.SearchRequest
 
 	// get final sealedNum after possible segment prune
 	sealedNum := lo.SumBy(sealed, func(item SnapshotItem) int { return len(item.Segments) })
-	log.Debug("search segments...",
+	log.Info("FUCK search segments...",
 		zap.Int("sealedNum", sealedNum),
 		zap.Int("growingNum", len(growing)),
 	)
