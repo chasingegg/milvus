@@ -100,7 +100,6 @@ ChunkTranslator::load_chunk(milvus::cachinglayer::cid_t cid) {
                  filepath.string());
 
         std::filesystem::create_directories(filepath.parent_path());
-
         auto file = File::Open(filepath.string(), O_CREAT | O_TRUNC | O_RDWR);
 
         std::shared_ptr<milvus::ArrowDataWrapper> r;
