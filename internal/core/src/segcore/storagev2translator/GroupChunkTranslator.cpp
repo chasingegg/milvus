@@ -223,7 +223,7 @@ GroupChunkTranslator::load_column_group_in_mmap() {
             process_batch(table, files, file_offsets, row_counts);
         }
     }
-    
+
     for (size_t i = 0; i < files.size(); ++i) {
         auto ok = unlink(files[i].c_str());
         AssertInfo(ok == 0,
@@ -280,6 +280,7 @@ GroupChunkTranslator::process_batch(const std::shared_ptr<arrow::Table>& table,
         row_counts[i] += chunk->RowNums();
         chunks[fid] = std::move(chunk);
     }
+
     // Create GroupChunk from chunks and store in results
     auto group_chunk = std::make_unique<milvus::GroupChunk>(chunks);
     group_chunks_.emplace_back(group_chunk.release());
