@@ -223,6 +223,7 @@ GroupChunkTranslator::load_column_group_in_mmap() {
             process_batch(table, files, file_offsets, row_counts);
         }
     }
+    
     for (size_t i = 0; i < files.size(); ++i) {
         auto ok = unlink(files[i].c_str());
         AssertInfo(ok == 0,
