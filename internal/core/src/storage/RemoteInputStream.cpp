@@ -18,6 +18,13 @@ RemoteInputStream::Read(void* data, size_t size) {
 }
 
 size_t
+RemoteInputStream::ReadAt(void* data, size_t offset, size_t size) {
+    auto status = remote_file_->ReadAt(offset, size, data);
+    AssertInfo(status.ok(), "Failed to read from input stream");
+    return static_cast<size_t>(status.ValueOrDie());
+}
+
+size_t
 RemoteInputStream::Tell() const {
     auto status = remote_file_->Tell();
     AssertInfo(status.ok(), "Failed to tell input stream");
