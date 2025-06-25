@@ -2,6 +2,7 @@
 
 #include "filemanager/InputStream.h"
 #include "milvus-storage/filesystem/fs.h"
+#include <vector>
 
 namespace milvus::storage {
 
@@ -19,6 +20,9 @@ class RemoteInputStream : public milvus::InputStream {
 
     size_t
     ReadAt(void* data, size_t offset, size_t size) override;
+
+    size_t
+    ReadAtAsync(std::vector<void*>& data, const std::vector<size_t>& offset, const std::vector<size_t>& size) override;
 
     size_t
     Tell() const override;
