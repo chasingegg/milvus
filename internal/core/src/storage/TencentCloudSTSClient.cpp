@@ -25,6 +25,8 @@
 #include <aws/core/utils/StringUtils.h>
 #include <aws/core/platform/Environment.h>
 #include <aws/core/client/AWSError.h>
+#include <aws/core/client/ClientConfiguration.h>
+
 #include "TencentCloudSTSClient.h"
 
 namespace Aws {
@@ -33,11 +35,6 @@ class HttpClient;
 class HttpRequest;
 enum class HttpResponseCode;
 }  // namespace Http
-
-namespace Client {
-Aws::String
-ComputeUserAgentString();
-}
 
 namespace Internal {
 
@@ -85,7 +82,7 @@ TencentCloudSTSCredentialsClient::GetAssumeRoleWithWebIdentityCredentials(
             Aws::Http::HttpMethod::HTTP_POST,
             Aws::Utils::Stream::DefaultResponseStreamFactoryMethod));
 
-    httpRequest->SetUserAgent(Aws::Client::ComputeUserAgentString(nullptr));
+    httpRequest->SetUserAgent(Aws::Client::ComputeUserAgentString());
     httpRequest->SetHeaderValue("Authorization", "SKIP");
     httpRequest->SetHeaderValue("Host", "sts.tencentcloudapi.com");
     httpRequest->SetHeaderValue("X-TC-Action", "AssumeRoleWithWebIdentity");

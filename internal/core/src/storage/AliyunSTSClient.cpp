@@ -26,6 +26,7 @@
 #include <aws/core/client/AWSError.h>
 #include <aws/core/client/CoreErrors.h>
 #include <aws/core/utils/xml/XmlSerializer.h>
+#include <aws/core/client/ClientConfiguration.h>
 #include <limits.h>
 #include <mutex>
 #include <sstream>
@@ -38,11 +39,6 @@ class HttpClient;
 class HttpRequest;
 enum class HttpResponseCode;
 }  // namespace Http
-
-namespace Client {
-Aws::String
-ComputeUserAgentString();
-}
 
 namespace Internal {
 
@@ -124,7 +120,7 @@ AliyunSTSCredentialsClient::GetAssumeRoleWithWebIdentityCredentials(
             Aws::Http::HttpMethod::HTTP_POST,
             Aws::Utils::Stream::DefaultResponseStreamFactoryMethod));
 
-    httpRequest->SetUserAgent(Aws::Client::ComputeUserAgentString(nullptr));
+    httpRequest->SetUserAgent(Aws::Client::ComputeUserAgentString());
 
     std::shared_ptr<Aws::IOStream> body =
         Aws::MakeShared<Aws::StringStream>("STS_RESOURCE_CLIENT_LOG_TAG");
