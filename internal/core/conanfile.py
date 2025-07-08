@@ -13,7 +13,7 @@ class MilvusConan(ConanFile):
         "lz4/1.9.4#c5afb86edd69ac0df30e3a9e192e43db",
         "snappy/1.1.9#0519333fef284acd04806243de7d3070",
         "lzo/2.10#9517fc1bcc4d4cc229a79806003a1baa",
-        "arrow/17.0.0#8cea917a6e06ca17c28411966d6fcdd7",
+        "arrow/16.1.0",
         "openssl/3.1.2#02594c4c0a6e2b4feb3cd15119993597",
         "aws-sdk-cpp/1.11.352@milvus/dev",
         "googleapis/cci.20221108#65604e1b3b9a6b363044da625b201a2a",
@@ -46,6 +46,7 @@ class MilvusConan(ConanFile):
         "grpc/1.50.1@milvus/dev#75103960d1cac300cf425ccfccceac08",
         "rapidjson/cci.20230929#624c0094d741e6a3749d2e44d834b96c",
         "simde/0.8.2#5e1edfd5cba92f25d79bf6ef4616b972"
+        # "thrift/0.20.0"
     )
     generators = ("cmake", "cmake_find_package")
     default_options = {
