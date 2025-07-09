@@ -3,6 +3,7 @@
 #include "arrow/buffer.h"
 #include "arrow/util/future.h"
 #include "arrow/result.h"
+#include <iostream>
 
 
 namespace milvus::storage {
@@ -14,48 +15,34 @@ RemoteInputStream::RemoteInputStream(std::string bucket, std::string file_key, s
     : bucket_(std::move(bucket)),
       file_key_(std::move(file_key)),
       client_(client) {
+    std::cout << "FUCK want to get size " << bucket_ << " " << file_key_ << std::endl;
     file_size_ = client_->GetObjectSize(bucket_, file_key_);
+    std::cout << "FUCK want to get size done " << file_size_ << std::endl;
 }
 
 size_t
 RemoteInputStream::Read(void* data, size_t size) {
+    // return 0;
     return client_->GetObjectRange(bucket_, file_key_, pos_, pos_ + size, data);
-    // auto status = remote_file_->Read(size, data);
-    // AssertInfo(status.ok(), "Failed to read from input stream");
-    // return static_cast<size_t>(status.ValueOrDie());
-    
 }
 
 size_t
 RemoteInputStream::ReadAt(void* data, size_t offset, size_t size) {
+    // return 0;
     return client_->GetObjectRange(bucket_, file_key_, offset, offset + size, data);
-    // auto status = remote_file_->ReadAt(offset, size, data);
-    // AssertInfo(status.ok(), "Failed to read from input stream");
-    // return static_cast<size_t>(status.ValueOrDie());
 }
 
 size_t
 RemoteInputStream::ReadAtAsync(std::vector<void*>& data, const std::vector<size_t>& offset, const std::vector<size_t>& size) {
-    // std::vector<Future<std::shared_ptr<Buffer>>> futures;
-    // futures.reserve(offset.size());
-    // for (size_t i = 0; i < offset.size(); ++i) {
-    //     futures.emplace_back(remote_file_->ReadAsync(offset[i], size[i]));
-    // }
-    // for (size_t i = 0; i < futures.size(); ++i) {
-    //     auto buf = (*futures[i].result());
-    //     std::memcpy(data[i], buf->data(), size[i]);
-    // }
-    return 0;
-    // auto status = remote_file_->ReadAt(offset, size, data);
-    // AssertInfo(status.ok(), "Failed to read from input stream");
-    // return static_cast<size_t>(status.ValueOrDie());
+    // return 0;
+    return client_->ReadBatchToMemory(bucket_, file_key_, data, offset, size);
 }
 
 size_t
 RemoteInputStream::ReadToFileAsync(const std::vector<size_t>& offset, const std::vector<size_t>& size,
     const std::string& local_file_path, const std::vector<int64_t>& ids, const std::function<void(int)>& callback) {
-        
-    return 0;
+    // return 0;
+    return client_->ReadBatchToFile(bucket_, file_key_, local_file_path, offset, size, ids, callback);
 }
 
 size_t
