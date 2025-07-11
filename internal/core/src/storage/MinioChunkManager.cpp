@@ -161,20 +161,20 @@ MinioChunkManager::InitSDKAPIDefault(const std::string& log_level_str) {
         LOG_INFO("init aws with log level:{}", log_level_str);
         auto get_aws_log_level = [](const std::string& level_str) {
             Aws::Utils::Logging::LogLevel level =
-                Aws::Utils::Logging::LogLevel::Off;
-            if (level_str == "fatal") {
-                level = Aws::Utils::Logging::LogLevel::Fatal;
-            } else if (level_str == "error") {
-                level = Aws::Utils::Logging::LogLevel::Error;
-            } else if (level_str == "warn") {
-                level = Aws::Utils::Logging::LogLevel::Warn;
-            } else if (level_str == "info") {
-                level = Aws::Utils::Logging::LogLevel::Info;
-            } else if (level_str == "debug") {
-                level = Aws::Utils::Logging::LogLevel::Debug;
-            } else if (level_str == "trace") {
+                Aws::Utils::Logging::LogLevel::Trace;
+            // if (level_str == "fatal") {
+            //     level = Aws::Utils::Logging::LogLevel::Fatal;
+            // } else if (level_str == "error") {
+            //     level = Aws::Utils::Logging::LogLevel::Error;
+            // } else if (level_str == "warn") {
+            //     level = Aws::Utils::Logging::LogLevel::Warn;
+            // } else if (level_str == "info") {
+            //     level = Aws::Utils::Logging::LogLevel::Info;
+            // } else if (level_str == "debug") {
+            //     level = Aws::Utils::Logging::LogLevel::Debug;
+            // } else if (level_str == "trace") {
                 level = Aws::Utils::Logging::LogLevel::Trace;
-            }
+            // }
             return level;
         };
         auto log_level = get_aws_log_level(log_level_str);
