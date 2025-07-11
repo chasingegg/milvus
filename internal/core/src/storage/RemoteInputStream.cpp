@@ -11,10 +11,12 @@ namespace milvus::storage {
 using ::arrow::Buffer;
 using ::arrow::Future;
 
-RemoteInputStream::RemoteInputStream(std::string bucket, std::string file_key, std::shared_ptr<milvus_storage::S3CrtClientWrapper> client)
+RemoteInputStream::RemoteInputStream(std::string bucket, std::string file_key, std::shared_ptr<milvus_storage::S3CrtClientWrapper> client,
+  std::shared_ptr<arrow::io::RandomAccessFile> remote_file)
     : bucket_(std::move(bucket)),
       file_key_(std::move(file_key)),
-      client_(client) {
+      client_(client),
+      remote_file_(std::move(remote_file)) {
     std::cout << "FUCK want to get " << bucket_ << " " << file_key_ << std::endl;
     file_size_ = client_->GetObjectSize(bucket_, file_key_);
     std::cout << "FUCK want to get size done " << file_size_ << std::endl;
@@ -33,7 +35,10 @@ RemoteInputStream::Read(void* data, size_t size) {
 size_t
 RemoteInputStream::ReadAt(void* data, size_t offset, size_t size) {
     // return 0;
-    return client_->GetObjectRange(bucket_, file_key_, offset, size, data);
+    // return client_->GetObjectRange(bucket_, file_key_, offset, size, data);
+    auto status = remote_file_->ReadAt(offset, size, data);
+    AssertInfo(status.ok(), "Failed to read from input stream");
+    return static_cast<size_t>(status.ValueOrDie());
 }
 
 size_t

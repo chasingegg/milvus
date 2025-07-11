@@ -19,6 +19,7 @@
 #include <boost/filesystem.hpp>
 #include <cstdint>
 #include <memory>
+#include <iostream>
 #include <mutex>
 #include <optional>
 #include <type_traits>
@@ -163,10 +164,12 @@ DiskFileManagerImpl::OpenInputStream(const std::string& filename) {
         GetInstance()
             .GetBucketAndKey(remote_file_path);
 
-    // auto remote_file = fs->OpenInputFile(remote_file_path);
-    // AssertInfo(remote_file.ok(), "failed to open remote file");
+    auto f = milvus_storage::ArrowFileSystemSingleton::GetInstance()
+                      .GetArrowFileSystem();
+    auto remote_file = f->OpenInputFile(remote_file_path);
+    AssertInfo(remote_file.ok(), "failed to open remote file");
     return std::static_pointer_cast<milvus::InputStream>(
-        std::make_shared<milvus::storage::RemoteInputStream>(std::move(bucket), std::move(file_key), fs));
+        std::make_shared<milvus::storage::RemoteInputStream>(std::move(bucket), std::move(file_key), fs, std::move(remote_file.ValueOrDie())));
 }
 
 std::shared_ptr<OutputStream>

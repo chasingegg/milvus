@@ -9,7 +9,8 @@ namespace milvus::storage {
 
 class RemoteInputStream : public milvus::InputStream {
  public:
-    explicit RemoteInputStream(std::string bucket, std::string file_key, std::shared_ptr<milvus_storage::S3CrtClientWrapper> client);
+    explicit RemoteInputStream(std::string bucket, std::string file_key, std::shared_ptr<milvus_storage::S3CrtClientWrapper> client,
+      std::shared_ptr<arrow::io::RandomAccessFile> remote_file);
 
     ~RemoteInputStream() override = default;
 
@@ -43,7 +44,7 @@ class RemoteInputStream : public milvus::InputStream {
    size_t file_size_;
    std::string bucket_;
    std::string file_key_;
-   // std::shared_ptr<arrow::io::RandomAccessFile> remote_file_;
+   std::shared_ptr<arrow::io::RandomAccessFile> remote_file_;
    std::shared_ptr<milvus_storage::S3CrtClientWrapper> client_;
 };
 
