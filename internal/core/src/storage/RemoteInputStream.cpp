@@ -15,7 +15,7 @@ RemoteInputStream::RemoteInputStream(std::string bucket, std::string file_key, s
     : bucket_(std::move(bucket)),
       file_key_(std::move(file_key)),
       client_(client) {
-    std::cout << "FUCK want to get file " << bucket_ << " " << file_key_ << std::endl;
+    std::cout << "FUCK want to get " << bucket_ << " " << file_key_ << std::endl;
     file_size_ = client_->GetObjectSize(bucket_, file_key_);
     std::cout << "FUCK want to get size done " << file_size_ << std::endl;
 }
