@@ -23,8 +23,10 @@ RemoteInputStream::RemoteInputStream(std::string bucket, std::string file_key, s
 size_t
 RemoteInputStream::Read(void* data, size_t size) {
     // return 0;
+    std::cout << "FUCK read " << pos_ << " " << size << std::endl;
     client_->GetObjectRange(bucket_, file_key_, pos_, size, data);
     pos_ += size;
+    std::cout << "FUCK read done " << pos_ << " " << size << std::endl;
     return size;
 }
 
