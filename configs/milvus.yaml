@@ -1352,6 +1352,10 @@ knowhere:
     search:
       beam_width_ratio: 4 # Ratio between the maximum number of IO requests per search iteration and CPU number
 
+autoIndex:
+  params:
+    sparse:
+      build: {"index_type": "SPARSE_INVERTED_INDEX_DEPRECATED", "metric_type": "IP"}
 # credential configs, support apikey, AKSK, gcp credential
 # examples:
 # credential:
