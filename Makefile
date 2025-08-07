@@ -22,7 +22,7 @@ PGO_PATH := $(PWD)/configs/pgo
 OS := $(shell uname -s)
 mode = Release
 
-use_disk_index = OFF
+use_disk_index = ON
 ifdef disk_index
 	use_disk_index = ${disk_index}
 endif
@@ -78,7 +78,7 @@ PROTOC_GEN_GO_GRPC_VERSION := 1.3.0
 PROTOC_GEN_GO_GRPC_OUTPUT := $(shell echo | $(INSTALL_PATH)/protoc-gen-go-grpc  --version 2>/dev/null)
 INSTALL_PROTOC_GEN_GO_GRPC := $(findstring $(PROTOC_GEN_GO_GRPC_VERSION),$(PROTOC_GEN_GO_GRPC_OUTPUT))
 
-index_engine = knowhere
+index_engine = cardinal
 
 export GIT_BRANCH=master
 
