@@ -35,7 +35,7 @@ SealedIndexTranslator::SealedIndexTranslator(
             milvus::segcore::getCacheWarmupPolicy(
                 IsVectorDataType(load_index_info->field_type),
                 /* is_index */ true),
-            /* support_eviction */ true) {
+            /* support_eviction */ false) {
 }
 
 size_t
