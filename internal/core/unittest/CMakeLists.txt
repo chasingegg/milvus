@@ -109,9 +109,9 @@ target_link_libraries(all_tests
         gtest
         gmock
         milvus_core
-        milvus-common
         knowhere
         milvus-storage
+        milvus-common
         )
 
 install(TARGETS all_tests DESTINATION unittest)

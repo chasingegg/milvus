@@ -75,9 +75,9 @@ set(LINK_TARGETS
     boost_bitset_ext
     simdjson
     tantivy_binding
-    milvus-common
     knowhere
     milvus-storage
+    milvus-common
     ${OpenMP_CXX_FLAGS}
     ${CONAN_LIBS}
     )
