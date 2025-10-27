@@ -430,6 +430,21 @@ func SetupCoreConfigChangelCallback() {
 			return nil
 		})
 
+		paramtable.Get().QueryNodeCfg.KnowhereFetchThreadPoolSize.RegisterCallback(func(ctx context.Context, key, oldValue, newValue string) error {
+			factor, err := strconv.ParseFloat(newValue, 64)
+			if err != nil {
+				return err
+			}
+			if factor <= 0 {
+				factor = 1
+			} else if factor > 32 {
+				factor = 32
+			}
+			knowhereFetchThreadPoolSize := uint32(float64(hardware.GetCPUNum()) * factor)
+			C.SegcoreSetKnowhereFetchThreadPoolNum(C.uint32_t(knowhereFetchThreadPoolSize))
+			return nil
+		})
+
 		paramtable.Get().CommonCfg.HighPriorityThreadCoreCoefficient.RegisterCallback(func(ctx context.Context, key, oldValue, newValue string) error {
 			coefficient, err := strconv.ParseFloat(newValue, 64)
 			if err != nil {

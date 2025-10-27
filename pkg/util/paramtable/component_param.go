@@ -3037,7 +3037,7 @@ type queryNodeConfig struct {
 	StatsPublishInterval ParamItem `refreshable:"true"`
 
 	// segcore
-	KnowhereFetchThreadPoolSize   ParamItem `refreshable:"false"`
+	KnowhereFetchThreadPoolSize   ParamItem `refreshable:"true"`
 	KnowhereThreadPoolSize        ParamItem `refreshable:"false"`
 	ChunkRows                     ParamItem `refreshable:"false"`
 	EnableInterminSegmentIndex    ParamItem `refreshable:"false"`
@@ -3514,13 +3514,13 @@ If set to 0, time based eviction is disabled.`,
 		Version:      "2.6.0",
 		DefaultValue: "4",
 		Formatter: func(v string) string {
-			factor := getAsInt64(v)
+			factor := getAsFloat(v)
 			if factor <= 0 {
 				factor = 1
 			} else if factor > 32 {
 				factor = 32
 			}
-			knowhereFetchThreadPoolSize := uint32(hardware.GetCPUNum()) * uint32(factor)
+			knowhereFetchThreadPoolSize := uint32(float64(hardware.GetCPUNum()) * factor)
 			return strconv.FormatUint(uint64(knowhereFetchThreadPoolSize), 10)
 		},
 		Doc:    "The number of threads in knowhere's fetch thread pool for object storage. The pool size will multiply with knowhereThreadPoolNumRatio([1, 32])",
