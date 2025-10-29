@@ -3038,7 +3038,7 @@ type queryNodeConfig struct {
 
 	// segcore
 	KnowhereFetchThreadPoolSize   ParamItem `refreshable:"true"`
-	KnowhereThreadPoolSize        ParamItem `refreshable:"false"`
+	KnowhereThreadPoolSize        ParamItem `refreshable:"true"`
 	ChunkRows                     ParamItem `refreshable:"false"`
 	EnableInterminSegmentIndex    ParamItem `refreshable:"false"`
 	InterimIndexNlist             ParamItem `refreshable:"false"`
