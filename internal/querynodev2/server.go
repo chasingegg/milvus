@@ -196,6 +196,14 @@ func ResizeHighPriorityPool(evt *config.Event) {
 	}
 }
 
+func ResizeMiddlePriorityPool(evt *config.Event) {
+	if evt.HasUpdated {
+		pt := paramtable.Get()
+		newRatio := pt.CommonCfg.MiddlePriorityThreadCoreCoefficient.GetAsFloat()
+		C.ResizeTheadPool(C.int64_t(1), C.float(newRatio))
+	}
+}
+
 func (node *QueryNode) ReconfigDiskFileWriterParams(evt *config.Event) {
 	if evt.HasUpdated {
 		if err := initcore.InitDiskFileWriterConfig(paramtable.Get()); err != nil {
@@ -219,6 +227,8 @@ func (node *QueryNode) RegisterSegcoreConfigWatcher() {
 	pt := paramtable.Get()
 	pt.Watch(pt.CommonCfg.HighPriorityThreadCoreCoefficient.Key,
 		config.NewHandler("common.threadCoreCoefficient.highPriority", ResizeHighPriorityPool))
+	pt.Watch(pt.CommonCfg.MiddlePriorityThreadCoreCoefficient.Key,
+		config.NewHandler("common.threadCoreCoefficient.middlePriority", ResizeMiddlePriorityPool))
 	pt.Watch(pt.CommonCfg.DiskWriteMode.Key,
 		config.NewHandler("common.diskWriteMode", node.ReconfigDiskFileWriterParams))
 	pt.Watch(pt.CommonCfg.DiskWriteBufferSizeKb.Key,
