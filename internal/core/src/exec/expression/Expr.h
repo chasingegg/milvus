@@ -759,129 +759,15 @@ class SegmentExpr : public Expr {
         ValTypes... values) {
         int64_t processed_size = 0;
 
-        size_t start_chunk = process_all_chunks ? 0 : current_data_chunk_;
-
-        for (size_t i = start_chunk; i < num_data_chunk_; i++) {
-            auto data_pos =
-                process_all_chunks
-                    ? 0
-                    : (i == current_data_chunk_ ? current_data_chunk_pos_ : 0);
-
-            // if segment is chunked, type won't be growing
-            int64_t size = segment_->chunk_size(field_id_, i) - data_pos;
-            // process a whole chunk if process_all_chunks is true
-            if (!process_all_chunks) {
-                size = std::min(size, batch_size_ - processed_size);
-            }
-
-            if (size == 0)
-                continue;  //do not go empty-loop at the bound of the chunk
-            std::vector<int32_t> segment_offsets_array(size);
-            auto start_offset =
-                segment_->num_rows_until_chunk(field_id_, i) + data_pos;
-            for (int64_t j = 0; j < size; ++j) {
-                int64_t offset = start_offset + j;
-                segment_offsets_array[j] = static_cast<int32_t>(offset);
-            }
-            auto& skip_index = segment_->GetSkipIndex();
-            if (!skip_func || !skip_func(skip_index, field_id_, i)) {
-                bool is_seal = false;
-                if constexpr (std::is_same_v<T, std::string_view> ||
-                              std::is_same_v<T, Json> ||
-                              std::is_same_v<T, ArrayView>) {
-                    if (segment_->type() == SegmentType::Sealed) {
-                        // first is the raw data, second is valid_data
-                        // use valid_data to see if raw data is null
-                        auto pw = segment_->get_batch_views<T>(
-                            op_ctx_, field_id_, i, data_pos, size);
-                        auto [data_vec, valid_data] = pw.get();
-
-                        if constexpr (NeedSegmentOffsets) {
-                            func(data_vec.data(),
-                                 valid_data.data(),
-                                 nullptr,
-                                 segment_offsets_array.data(),
-                                 size,
-                                 res + processed_size,
-                                 valid_res + processed_size,
-                                 values...);
-                        } else {
-                            func(data_vec.data(),
-                                 valid_data.data(),
-                                 nullptr,
-                                 size,
-                                 res + processed_size,
-                                 valid_res + processed_size,
-                                 values...);
-                        }
-
-                        is_seal = true;
-                    }
-                }
-                if (!is_seal) {
-                    auto pw = segment_->chunk_data<T>(op_ctx_, field_id_, i);
-                    auto chunk = pw.get();
-                    const T* data = chunk.data() + data_pos;
-                    const bool* valid_data = chunk.valid_data();
-                    if (valid_data != nullptr) {
-                        valid_data += data_pos;
-                    }
-
-                    if constexpr (NeedSegmentOffsets) {
-                        // For GIS functions: construct segment offsets array
-                        func(data,
-                             valid_data,
-                             nullptr,
-                             segment_offsets_array.data(),
-                             size,
-                             res + processed_size,
-                             valid_res + processed_size,
-                             values...);
-                    } else {
-                        func(data,
-                             valid_data,
-                             nullptr,
-                             size,
-                             res + processed_size,
-                             valid_res + processed_size,
-                             values...);
-                    }
-                }
-            } else {
-                const bool* valid_data;
-                if constexpr (std::is_same_v<T, std::string_view> ||
-                              std::is_same_v<T, Json> ||
-                              std::is_same_v<T, ArrayView>) {
-                    auto pw = segment_->get_batch_views<T>(
-                        op_ctx_, field_id_, i, data_pos, size);
-                    valid_data = pw.get().second.data();
-                    ApplyValidData(valid_data,
-                                   res + processed_size,
-                                   valid_res + processed_size,
-                                   size);
-                } else {
-                    auto pw = segment_->chunk_data<T>(op_ctx_, field_id_, i);
-                    auto chunk = pw.get();
-                    valid_data = chunk.valid_data();
-                    if (valid_data != nullptr) {
-                        valid_data += data_pos;
-                    }
-                    ApplyValidData(valid_data,
-                                   res + processed_size,
-                                   valid_res + processed_size,
-                                   size);
-                }
-            }
-
-            processed_size += size;
-
-            if (!process_all_chunks && processed_size >= batch_size_) {
-                current_data_chunk_ = i;
-                current_data_chunk_pos_ = data_pos + size;
-                break;
+        if constexpr (std::is_same_v<T, std::string_view> ||
+                      std::is_same_v<T, Json> || std::is_same_v<T, ArrayView>) {
+            if (segment_->type() == SegmentType::Sealed) {
+                // first is the raw data, second is valid_data
+                // use valid_data to see if raw data is null
+                auto pw = segment_->get_batch_views<T>(
+                    op_ctx_, field_id_, 0, 0, batch_size_);
             }
         }
-
         return processed_size;
     }
 

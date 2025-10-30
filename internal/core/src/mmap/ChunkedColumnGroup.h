@@ -284,12 +284,14 @@ class ProxyChunkColumn : public ChunkedColumnInterface {
                       "[StorageV2] StringViews only supported for "
                       "ChunkedVariableColumn");
         }
-        auto chunk_wrapper = group_->GetGroupChunk(op_ctx, chunk_id);
-        auto chunk = chunk_wrapper.get()->GetChunk(field_id_);
-        return PinWrapper<
-            std::pair<std::vector<std::string_view>, FixedVector<bool>>>(
-            chunk_wrapper,
-            static_cast<StringChunk*>(chunk.get())->StringViews(offset_len));
+        auto chunks = GetAllChunks(op_ctx);
+        for (auto& chunk : chunks) {
+            return PinWrapper<
+                std::pair<std::vector<std::string_view>, FixedVector<bool>>>(
+                nullptr,
+                static_cast<StringChunk*>(chunk.get())
+                    ->StringViews(offset_len));
+        }
     }
 
     PinWrapper<std::pair<std::vector<ArrayView>, FixedVector<bool>>>
