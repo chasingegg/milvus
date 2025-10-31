@@ -342,6 +342,10 @@ MinioChunkManager::MinioChunkManager(const StorageConfig& storage_config)
                                   ? DEFAULT_CHUNK_MANAGER_REQUEST_TIMEOUT_MS
                                   : storage_config.requestTimeoutMs;
 
+    config.maxConnections = storage_config.max_connections == 0
+                                ? DEFAULT_CHUNK_MANAGER_MAX_CONNECTIONS
+                                : storage_config.max_connections;
+
     if (!storage_config.region.empty()) {
         config.region = ConvertToAwsString(storage_config.region);
     }

@@ -76,7 +76,9 @@ generateConfig(const StorageConfig& storage_config) {
     config.requestTimeoutMs = storage_config.requestTimeoutMs == 0
                                   ? DEFAULT_CHUNK_MANAGER_REQUEST_TIMEOUT_MS
                                   : storage_config.requestTimeoutMs;
-
+    config.maxConnections = storage_config.max_connections == 0
+                                ? DEFAULT_CHUNK_MANAGER_MAX_CONNECTIONS
+                                : storage_config.max_connections;
     return config;
 }
 
