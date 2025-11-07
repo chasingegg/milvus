@@ -351,7 +351,7 @@ AppendIndexV2(CTraceContext c_trace, CLoadIndexInfo c_load_index_info) {
             translator = std::make_unique<
                 milvus::segcore::storagev1translator::SealedIndexTranslator>(
                 index_info, load_index_info, ctx, fileManagerContext, config);
-
+        LOG_INFO("FUCK load index type: {}", index_info.index_type);
         load_index_info->cache_index =
             milvus::cachinglayer::Manager::GetInstance().CreateCacheSlot(
                 std::move(translator));

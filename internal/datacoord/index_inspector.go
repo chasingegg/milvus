@@ -30,6 +30,8 @@ import (
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
+	"github.com/milvus-io/milvus/internal/util/vecindexmgr"
 )
 
 type indexInspector struct {
@@ -174,6 +176,22 @@ func (i *indexInspector) createIndexForSegment(ctx context.Context, segment *Seg
 		return err
 	}
 	taskSlot := calculateIndexTaskSlot(segment.getSegmentSize())
+
+	indexParams := i.meta.indexMeta.GetIndexParams(segment.CollectionID, indexID)
+	indexType := GetIndexType(indexParams)
+	log.Info("FUCK create segment index", zap.Any("indexParams", indexParams))
+
+	// rewrite the index type if needed, and this final index type will be persisted in the meta
+	if vecindexmgr.GetVecIndexMgrInstance().IsVecIndex(indexType) && Params.KnowhereConfig.Enable.GetAsBool() {
+		var err error
+		indexParams, err = Params.KnowhereConfig.UpdateIndexParams(indexType, paramtable.BuildStage, indexParams)
+		if err != nil {
+			return err
+		}
+	}
+	newIndexType := GetIndexType(indexParams)
+	log.Info("FUCK get newIndexType", zap.String("newIndexType", newIndexType))
+
 	segIndex := &model.SegmentIndex{
 		SegmentID:      segment.ID,
 		CollectionID:   segment.CollectionID,
@@ -183,6 +201,7 @@ func (i *indexInspector) createIndexForSegment(ctx context.Context, segment *Seg
 		BuildID:        buildID,
 		CreatedUTCTime: uint64(time.Now().Unix()),
 		WriteHandoff:   false,
+		IndexType:      newIndexType,
 	}
 	if err = i.meta.indexMeta.AddSegmentIndex(ctx, segIndex); err != nil {
 		return err
