@@ -173,6 +173,7 @@ EstimateLoadIndexResource(CLoadIndexInfo c_load_index_info) {
                 load_index_info->enable_mmap,
                 load_index_info->num_rows,
                 load_index_info->dim);
+        LOG_INFO("FUCK estimate load index resource: {}", load_index_info->index_size);
         return request;
     } catch (std::exception& e) {
         ThrowInfo(milvus::UnexpectedError,

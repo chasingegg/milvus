@@ -1074,6 +1074,8 @@ func GetCLoadInfoWithFunc(ctx context.Context,
 		NumRows:            indexInfo.GetNumRows(),
 	}
 
+	log.Info("FUCK indexInfoProto", zap.Any("indexInfoProto", indexInfoProto))
+
 	// 2.
 	if err := loadIndexInfo.appendLoadIndexInfo(ctx, indexInfoProto); err != nil {
 		log.Warn("fail to append load index info", zap.Error(err))

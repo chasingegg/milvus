@@ -82,6 +82,7 @@ SealedIndexTranslator::estimated_byte_size_of_cell(
             index_load_info_.enable_mmap,
             index_load_info_.num_rows,
             index_load_info_.dim);
+    LOG_INFO("FUCK estimated byte size, index size: {}", index_load_info_.index_size);
     // this is an estimation, error could be up to 20%.
     return {milvus::cachinglayer::ResourceUsage(request.final_memory_cost,
                                                 request.final_disk_cost),
@@ -110,6 +111,8 @@ SealedIndexTranslator::get_cells(const std::vector<cid_t>& cids) {
             index_load_info_.enable_mmap,
             index_load_info_.num_rows,
             index_load_info_.dim);
+    LOG_INFO("FUCK get cells, index size: {}", index_load_info_.index_size);
+    
     index->SetCellSize(milvus::cachinglayer::ResourceUsage(
         request.final_memory_cost, request.final_disk_cost));
     if (index_load_info_.enable_mmap && index->IsMmapSupported()) {

@@ -132,6 +132,7 @@ ChunkedSegmentSealedImpl::LoadVecIndex(const LoadIndexInfo& info) {
             info.enable_mmap,
             info.num_rows,
             info.dim);
+    LOG_INFO("FUCK chunk segment load vec index, index size: {}", info.index_size);
 
     if (request.has_raw_data && get_bit(field_data_ready_bitset_, field_id)) {
         fields_.rlock()->at(field_id)->ManualEvictCache();
