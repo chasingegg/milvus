@@ -28,6 +28,18 @@ extern "C" {
 typedef void* CSearchResult;
 typedef CProto CRetrieveResult;
 
+//////////////////////////////    two-stage search types    //////////////////////////////
+/**
+ * @brief Result structure for filter-only execution (Stage 1 of two-stage search)
+ * Contains the bitset from scalar filtering and statistics needed for search optimization
+ */
+typedef struct CFilterResult {
+    void* bitset_data;          // Serialized bitset data (caller must free)
+    int64_t bitset_size;        // Size of bitset in bytes
+    int64_t total_rows;         // Total rows in segment before filtering
+    int64_t filtered_count;     // Number of rows passing the filter (bitset cardinality)
+} CFilterResult;
+
 //////////////////////////////    common interfaces    //////////////////////////////
 CStatus
 NewSegment(CCollection collection,
@@ -45,14 +57,47 @@ ClearSegmentData(CSegmentInterface c_segment);
 void
 DeleteSearchResult(CSearchResult search_result);
 
-CFuture*  // Future<CSearchResultBody>
+/**
+ * @brief Unified async search interface supporting all search modes
+ *
+ * This function handles three search modes based on parameters:
+ * 1. Normal search: c_placeholder_group != nullptr, c_bitset_data == nullptr, filter_only == false
+ *    Returns Future<CSearchResult>
+ * 2. Filter-only (two-stage stage 1): filter_only == true
+ *    Returns Future<CFilterResult*> containing bitset
+ * 3. Search with bitset (two-stage stage 2): c_bitset_data != nullptr
+ *    Returns Future<CSearchResult> using pre-computed bitset
+ *
+ * @param c_trace: Tracing context for distributed tracing
+ * @param c_segment: Segment to execute search on
+ * @param c_plan: Search plan containing filter predicates
+ * @param c_placeholder_group: Query vectors (nullptr for filter-only mode)
+ * @param timestamp: MVCC timestamp for consistency
+ * @param consistency_level: Consistency level for the query
+ * @param collection_ttl: Collection TTL timestamp
+ * @param c_bitset_data: Pre-computed bitset (nullptr for normal/filter-only mode)
+ * @param c_bitset_size: Size of bitset in bytes (0 for normal/filter-only mode)
+ * @param filter_only: If true, execute filter-only mode (ignore placeholder_group)
+ * @return CFuture* Future that resolves to CSearchResult or CFilterResult* based on mode
+ */
+CFuture*
 AsyncSearch(CTraceContext c_trace,
             CSegmentInterface c_segment,
             CSearchPlan c_plan,
             CPlaceholderGroup c_placeholder_group,
             uint64_t timestamp,
             int32_t consistency_level,
-            uint64_t collection_ttl);
+            uint64_t collection_ttl,
+            const uint8_t* c_bitset_data,
+            int64_t c_bitset_size,
+            bool filter_only);
+
+/**
+ * @brief Delete a filter result returned by AsyncSearch in filter-only mode
+ * @param filter_result: Pointer to CFilterResult to delete
+ */
+void
+DeleteFilterResult(CFilterResult* filter_result);
 
 void
 DeleteRetrieveResult(CRetrieveResult* retrieve_result);

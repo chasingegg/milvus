@@ -74,6 +74,35 @@ func (plan *SearchPlan) delete() {
 	C.DeleteSearchPlan(plan.cSearchPlan)
 }
 
+// SearchOptions contains optional parameters for search execution
+type SearchOptions struct {
+	// FilterOnly when true, only executes scalar filtering (two-stage search stage 1)
+	FilterOnly bool
+	// ExternalBitset when non-nil, uses pre-computed bitset instead of filtering (two-stage search stage 2)
+	ExternalBitset []byte
+}
+
+// UnifiedSearchResult holds results from any search mode
+type UnifiedSearchResult struct {
+	// SearchResult is set for normal search and search-with-bitset modes
+	SearchResult *SearchResult
+	// FilterResult is set for filter-only mode
+	FilterResult *FilterResult
+}
+
+// IsFilterOnly returns true if this is a filter-only result
+func (r *UnifiedSearchResult) IsFilterOnly() bool {
+	return r.FilterResult != nil
+}
+
+// Release releases the underlying resources
+func (r *UnifiedSearchResult) Release() {
+	if r.SearchResult != nil {
+		r.SearchResult.Release()
+	}
+	// FilterResult doesn't need release (Go-managed memory)
+}
+
 type SearchRequest struct {
 	plan              *SearchPlan
 	cPlaceholderGroup C.CPlaceholderGroup
@@ -82,6 +111,17 @@ type SearchRequest struct {
 	mvccTimestamp     typeutil.Timestamp
 	consistencyLevel  commonpb.ConsistencyLevel
 	collectionTTL     typeutil.Timestamp
+	options           *SearchOptions
+}
+
+// Options returns the search options (may be nil for normal search)
+func (req *SearchRequest) Options() *SearchOptions {
+	return req.options
+}
+
+// SetOptions sets the search options
+func (req *SearchRequest) SetOptions(opts *SearchOptions) {
+	req.options = opts
 }
 
 func NewSearchRequest(collection *CCollection, req *querypb.SearchRequest, placeholderGrp []byte) (*SearchRequest, error) {
@@ -137,6 +177,10 @@ func (req *SearchRequest) GetNumOfQuery() int64 {
 
 func (req *SearchRequest) MVCC() typeutil.Timestamp {
 	return req.mvccTimestamp
+}
+
+func (req *SearchRequest) ConsistencyLevel() commonpb.ConsistencyLevel {
+	return req.consistencyLevel
 }
 
 func (req *SearchRequest) Plan() *SearchPlan {

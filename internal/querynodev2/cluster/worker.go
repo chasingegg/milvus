@@ -35,6 +35,14 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 )
 
+// FilterResult represents the result of filter-only execution (Stage 1 of two-stage search)
+type FilterResult struct {
+	SegmentID     int64
+	BitsetData    []byte // Serialized bitset data (1 = filtered out, 0 = pass)
+	TotalRows     int64  // Total rows in segment before filtering
+	FilteredCount int64  // Number of rows filtered out
+}
+
 // Worker is the interface definition for querynode worker role.
 type Worker interface {
 	LoadSegments(context.Context, *querypb.LoadSegmentsRequest) error
@@ -47,6 +55,10 @@ type Worker interface {
 	GetStatistics(ctx context.Context, req *querypb.GetStatisticsRequest) (*internalpb.GetStatisticsResponse, error)
 	UpdateSchema(ctx context.Context, req *querypb.UpdateSchemaRequest) (*commonpb.Status, error)
 	DropIndex(ctx context.Context, req *querypb.DropIndexRequest) error
+
+	// Two-stage search methods
+	SearchFilterOnly(ctx context.Context, req *querypb.SearchRequest) (map[int64]*FilterResult, error)
+	SearchWithBitset(ctx context.Context, req *querypb.SearchRequest, filterResults map[int64]*FilterResult) (*internalpb.SearchResults, error)
 
 	IsHealthy() bool
 	Stop()
@@ -262,6 +274,16 @@ func (w *remoteWorker) DropIndex(ctx context.Context, req *querypb.DropIndexRequ
 		return err
 	}
 	return nil
+}
+
+func (w *remoteWorker) SearchFilterOnly(ctx context.Context, req *querypb.SearchRequest) (map[int64]*FilterResult, error) {
+	// Two-stage search is a local optimization, not supported for remote workers
+	return nil, merr.WrapErrServiceInternal("SearchFilterOnly is not supported for remote workers")
+}
+
+func (w *remoteWorker) SearchWithBitset(ctx context.Context, req *querypb.SearchRequest, filterResults map[int64]*FilterResult) (*internalpb.SearchResults, error) {
+	// Two-stage search is a local optimization, not supported for remote workers
+	return nil, merr.WrapErrServiceInternal("SearchWithBitset is not supported for remote workers")
 }
 
 func (w *remoteWorker) IsHealthy() bool {

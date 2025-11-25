@@ -1,7 +1,5 @@
 package tasks
 
-// TODO: rename this file into search_task.go
-
 import "C"
 
 import (
@@ -17,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
+	"github.com/milvus-io/milvus/internal/querynodev2/cluster"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments"
 	"github.com/milvus-io/milvus/internal/util/searchutil/scheduler"
 	"github.com/milvus-io/milvus/internal/util/segcore"
@@ -36,6 +35,18 @@ var (
 	_ scheduler.MergeTask = &SearchTask{}
 )
 
+// SearchMode defines the execution mode for SearchTask
+type SearchMode int
+
+const (
+	// SearchModeNormal - full search with filter + vector search
+	SearchModeNormal SearchMode = iota
+	// SearchModeWithBitset - vector search with pre-computed bitsets (two-stage stage 2)
+	SearchModeWithBitset
+	// SearchModeFilterOnly - filter-only execution, returns bitsets (two-stage stage 1)
+	SearchModeFilterOnly
+)
+
 type SearchTask struct {
 	ctx              context.Context
 	collection       *segments.Collection
@@ -52,6 +63,11 @@ type SearchTask struct {
 	others           []*SearchTask
 	notifier         chan error
 	serverID         int64
+
+	// Search mode determines execution path
+	mode SearchMode
+	// For SearchModeWithBitset: input bitsets; For SearchModeFilterOnly: output bitsets
+	filterResults map[int64]*cluster.FilterResult
 
 	tr           *timerecord.TimeRecorder
 	scheduleSpan trace.Span
@@ -80,7 +96,35 @@ func NewSearchTask(ctx context.Context,
 		tr:               timerecord.NewTimeRecorderWithTrace(ctx, "searchTask"),
 		scheduleSpan:     span,
 		serverID:         serverID,
+		mode:             SearchModeNormal,
 	}
+}
+
+// NewSearchTaskWithBitset creates a SearchTask for two-stage search with pre-computed bitsets (stage 2)
+func NewSearchTaskWithBitset(ctx context.Context,
+	collection *segments.Collection,
+	manager *segments.Manager,
+	req *querypb.SearchRequest,
+	filterResults map[int64]*cluster.FilterResult,
+	serverID int64,
+) *SearchTask {
+	task := NewSearchTask(ctx, collection, manager, req, serverID)
+	task.mode = SearchModeWithBitset
+	task.filterResults = filterResults
+	return task
+}
+
+// NewSearchTaskFilterOnly creates a SearchTask for filter-only execution (two-stage stage 1)
+func NewSearchTaskFilterOnly(ctx context.Context,
+	collection *segments.Collection,
+	manager *segments.Manager,
+	req *querypb.SearchRequest,
+	serverID int64,
+) *SearchTask {
+	task := NewSearchTask(ctx, collection, manager, req, serverID)
+	task.mode = SearchModeFilterOnly
+	task.filterResults = make(map[int64]*cluster.FilterResult)
+	return task
 }
 
 // Return the username which task is belong to.
@@ -139,6 +183,12 @@ func (t *SearchTask) Execute() error {
 	if t.scheduleSpan != nil {
 		t.scheduleSpan.End()
 	}
+
+	// Handle filter-only mode separately
+	if t.mode == SearchModeFilterOnly {
+		return t.executeFilterOnly()
+	}
+
 	tr := timerecord.NewTimeRecorderWithTrace(t.ctx, "SearchTask")
 
 	req := t.req
@@ -156,24 +206,30 @@ func (t *SearchTask) Execute() error {
 		results          []*segments.SearchResult
 		searchedSegments []segments.Segment
 	)
-	if req.GetScope() == querypb.DataScope_Historical {
-		results, searchedSegments, err = segments.SearchHistorical(
-			t.ctx,
-			t.segmentManager,
-			searchReq,
-			req.GetReq().GetCollectionID(),
-			req.GetReq().GetPartitionIDs(),
-			req.GetSegmentIDs(),
-		)
-	} else if req.GetScope() == querypb.DataScope_Streaming {
-		results, searchedSegments, err = segments.SearchStreaming(
-			t.ctx,
-			t.segmentManager,
-			searchReq,
-			req.GetReq().GetCollectionID(),
-			req.GetReq().GetPartitionIDs(),
-			req.GetSegmentIDs(),
-		)
+
+	switch t.mode {
+	case SearchModeWithBitset:
+		results, searchedSegments, err = t.executeWithBitset(searchReq)
+	case SearchModeNormal:
+		if req.GetScope() == querypb.DataScope_Historical {
+			results, searchedSegments, err = segments.SearchHistorical(
+				t.ctx,
+				t.segmentManager,
+				searchReq,
+				req.GetReq().GetCollectionID(),
+				req.GetReq().GetPartitionIDs(),
+				req.GetSegmentIDs(),
+			)
+		} else if req.GetScope() == querypb.DataScope_Streaming {
+			results, searchedSegments, err = segments.SearchStreaming(
+				t.ctx,
+				t.segmentManager,
+				searchReq,
+				req.GetReq().GetCollectionID(),
+				req.GetReq().GetPartitionIDs(),
+				req.GetSegmentIDs(),
+			)
+		}
 	}
 	defer t.segmentManager.Segment.Unpin(searchedSegments)
 	if err != nil {
@@ -275,7 +331,109 @@ func (t *SearchTask) Execute() error {
 	return nil
 }
 
+// executeWithBitset executes search with pre-computed bitsets (for two-stage search)
+func (t *SearchTask) executeWithBitset(searchReq *segcore.SearchRequest) ([]*segments.SearchResult, []segments.Segment, error) {
+	log := log.Ctx(t.ctx).With(
+		zap.Int64("collectionID", t.collection.ID()),
+		zap.String("shard", t.req.GetDmlChannels()[0]),
+	)
+
+	var (
+		results          []*segments.SearchResult
+		searchedSegments []segments.Segment
+	)
+
+	for _, segID := range t.req.GetSegmentIDs() {
+		stats, ok := t.filterResults[segID]
+		if !ok {
+			log.Warn("No filter stats for segment", zap.Int64("segmentID", segID))
+			continue
+		}
+
+		segment, err := t.segmentManager.Segment.GetAndPinBy(segments.WithID(segID))
+		if err != nil {
+			log.Warn("Segment not found", zap.Int64("segmentID", segID), zap.Error(err))
+			continue
+		}
+		if len(segment) == 0 {
+			continue
+		}
+		seg := segment[0]
+		searchedSegments = append(searchedSegments, seg)
+
+		// Set external bitset option for unified Search
+		searchReq.SetOptions(&segcore.SearchOptions{ExternalBitset: stats.BitsetData})
+		unifiedResult, err := seg.Search(t.ctx, searchReq)
+		if err != nil {
+			log.Warn("SearchWithBitset failed", zap.Int64("segmentID", segID), zap.Error(err))
+			t.segmentManager.Segment.Unpin(searchedSegments)
+			segments.DeleteSearchResults(results)
+			return nil, nil, err
+		}
+		results = append(results, unifiedResult.SearchResult)
+	}
+
+	return results, searchedSegments, nil
+}
+
+// executeFilterOnly executes filter-only stage (for two-stage search stage 1)
+func (t *SearchTask) executeFilterOnly() error {
+	log := log.Ctx(t.ctx).With(
+		zap.Int64("collectionID", t.collection.ID()),
+		zap.Int64s("segmentIDs", t.req.GetSegmentIDs()),
+	)
+
+	searchReq, err := segcore.NewSearchRequest(t.collection.GetCCollection(), t.req, t.req.GetReq().GetPlaceholderGroup())
+	if err != nil {
+		return err
+	}
+	defer searchReq.Delete()
+
+	// Set filter-only option for unified Search
+	searchReq.SetOptions(&segcore.SearchOptions{FilterOnly: true})
+
+	for _, segID := range t.req.GetSegmentIDs() {
+		segment, err := t.segmentManager.Segment.GetAndPinBy(segments.WithID(segID))
+		if err != nil {
+			log.Warn("Segment not found for filter stage", zap.Int64("segmentID", segID), zap.Error(err))
+			continue
+		}
+		if len(segment) == 0 {
+			continue
+		}
+		seg := segment[0]
+		defer t.segmentManager.Segment.Unpin(segment)
+
+		unifiedResult, err := seg.Search(t.ctx, searchReq)
+		if err != nil {
+			log.Warn("Filter-only execution failed", zap.Int64("segmentID", segID), zap.Error(err))
+			return err
+		}
+
+		filterResult := unifiedResult.FilterResult
+		t.filterResults[segID] = &cluster.FilterResult{
+			SegmentID:     segID,
+			BitsetData:    filterResult.BitsetData,
+			TotalRows:     filterResult.TotalRows,
+			FilteredCount: filterResult.FilteredCount,
+		}
+	}
+
+	// Share filter results with merged tasks
+	for _, other := range t.others {
+		other.filterResults = t.filterResults
+	}
+
+	log.Debug("filter-only search completed", zap.Int("results", len(t.filterResults)))
+	return nil
+}
+
 func (t *SearchTask) Merge(other *SearchTask) bool {
+	// Tasks must have the same mode to be mergeable
+	if t.mode != other.mode {
+		return false
+	}
+
 	var (
 		nq        = t.nq
 		topk      = t.topk
@@ -344,6 +502,11 @@ func (t *SearchTask) SearchResult() *internalpb.SearchResults {
 		t.result.ChannelsMvcc = channelsMvcc
 	}
 	return t.result
+}
+
+// FilterResults returns the filter results (only valid for SearchModeFilterOnly)
+func (t *SearchTask) FilterResults() map[int64]*cluster.FilterResult {
+	return t.filterResults
 }
 
 func (t *SearchTask) NQ() int64 {

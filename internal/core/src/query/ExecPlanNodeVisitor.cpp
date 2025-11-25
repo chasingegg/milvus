@@ -177,6 +177,11 @@ ExecPlanNodeVisitor::visit(VectorPlanNode& node) {
     query_context->set_search_info(node.search_info_);
     query_context->set_placeholder_group(placeholder_group_);
 
+    // Set external bitset if provided (for two-stage search)
+    if (has_external_bitset_) {
+        query_context->set_external_bitset(external_bitset_);
+    }
+
     // Set op context to query context
     auto op_context = milvus::OpContext(cancel_token_);
     query_context->set_op_context(&op_context);

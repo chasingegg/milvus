@@ -149,6 +149,12 @@ const (
 	CollectionKey   = "collection"
 	RecallEvalKey   = "recall_eval"
 
+	// Two-stage search filter statistics keys
+	FilterRatioKey      = "filter_ratio"       // Actual filter selectivity ratio (0.0-1.0)
+	FilteredRowCountKey = "filtered_row_count" // Actual number of rows passing filter
+	TotalRowCountKey    = "total_row_count"    // Total rows before filtering
+	TwoStageSearchKey   = "two_stage_search"   // Flag indicating two-stage search mode
+
 	ParamsKey      = "params"
 	IndexTypeKey   = "index_type"
 	MetricTypeKey  = "metric_type"

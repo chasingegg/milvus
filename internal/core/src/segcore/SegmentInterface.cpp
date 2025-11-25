@@ -98,18 +98,26 @@ SegmentInternalInterface::Search(
     Timestamp timestamp,
     const folly::CancellationToken& cancel_token,
     int32_t consistency_level,
-    Timestamp collection_ttl) const {
+    Timestamp collection_ttl,
+    const BitsetView* external_bitset) const {
     std::shared_lock lck(mutex_);
     milvus::tracer::AddEvent("obtained_segment_lock_mutex");
     check_search(plan);
-    query::ExecPlanNodeVisitor visitor(*this,
-                                       timestamp,
-                                       placeholder_group,
-                                       cancel_token,
-                                       consistency_level,
-                                       collection_ttl);
+
+    std::unique_ptr<query::ExecPlanNodeVisitor> visitor;
+    if (external_bitset != nullptr) {
+        // Use constructor with external bitset for two-stage search
+        visitor = std::make_unique<query::ExecPlanNodeVisitor>(
+            *this, timestamp, placeholder_group, cancel_token,
+            consistency_level, collection_ttl, *external_bitset);
+    } else {
+        visitor = std::make_unique<query::ExecPlanNodeVisitor>(
+            *this, timestamp, placeholder_group, cancel_token,
+            consistency_level, collection_ttl);
+    }
+
     auto results = std::make_unique<SearchResult>();
-    *results = visitor.get_moved_result(*plan->plan_node_);
+    *results = visitor->get_moved_result(*plan->plan_node_);
     results->segment_ = (void*)this;
     return results;
 }

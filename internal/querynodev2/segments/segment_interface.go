@@ -104,9 +104,14 @@ type Segment interface {
 	GetBM25Stats() map[int64]*storage.BM25Stats
 
 	// Read operations
-	Search(ctx context.Context, searchReq *segcore.SearchRequest) (*segcore.SearchResult, error)
+	// Search executes search on the segment. Behavior depends on SearchRequest.Options():
+	//   - nil or default: normal search (filter + vector search), returns SearchResult
+	//   - FilterOnly=true: only scalar filtering (two-stage stage 1), returns FilterResult
+	//   - ExternalBitset!=nil: vector search with bitset (two-stage stage 2), returns SearchResult
+	Search(ctx context.Context, searchReq *segcore.SearchRequest) (*segcore.UnifiedSearchResult, error)
 	Retrieve(ctx context.Context, plan *segcore.RetrievePlan) (*segcorepb.RetrieveResults, error)
 	RetrieveByOffsets(ctx context.Context, plan *segcore.RetrievePlanWithOffsets) (*segcorepb.RetrieveResults, error)
+
 	IsLazyLoad() bool
 	ResetIndexesLazyLoad(lazyState bool)
 

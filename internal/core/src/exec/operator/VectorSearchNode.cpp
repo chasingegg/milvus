@@ -69,23 +69,37 @@ PhyVectorSearchNode::GetOutput() {
     std::chrono::high_resolution_clock::time_point vector_start =
         std::chrono::high_resolution_clock::now();
 
+    // For filter-only queries, placeholder_group_ can be null
+    if (placeholder_group_ == nullptr || placeholder_group_->empty()) {
+        // Return the input directly for filter-only mode
+        is_finished_ = true;
+        return input_;
+    }
+
     auto& ph = placeholder_group_->at(0);
     auto src_data = ph.get_blob();
     auto src_offsets = ph.get_offsets();
     auto num_queries = ph.num_of_queries_;
     milvus::SearchResult search_result;
 
-    auto col_input = GetColumnVector(input_);
-    TargetBitmapView view(col_input->GetRawData(), col_input->size());
-    if (view.all()) {
-        query_context_->set_search_result(
-            std::move(empty_search_result(num_queries)));
-        return input_;
+    // Use external bitset if provided (for two-stage search), otherwise use filter result
+    milvus::BitsetView final_view;
+    if (query_context_->has_external_bitset()) {
+        // Two-stage search: use pre-computed external bitset
+        final_view = query_context_->get_external_bitset();
+    } else {
+        // Normal search: use bitset from filter nodes
+        auto col_input = GetColumnVector(input_);
+        TargetBitmapView view(col_input->GetRawData(), col_input->size());
+        if (view.all()) {
+            query_context_->set_search_result(
+                std::move(empty_search_result(num_queries)));
+            return input_;
+        }
+        // TODO: uniform knowhere BitsetView and milvus BitsetView
+        final_view = milvus::BitsetView((uint8_t*)col_input->GetRawData(),
+                                        col_input->size());
     }
-
-    // TODO: uniform knowhere BitsetView and milvus BitsetView
-    milvus::BitsetView final_view((uint8_t*)col_input->GetRawData(),
-                                  col_input->size());
     auto op_context = query_context_->get_op_context();
     segment_->vector_search(search_info_,
                             src_data,

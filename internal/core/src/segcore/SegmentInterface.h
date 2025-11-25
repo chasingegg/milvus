@@ -73,13 +73,16 @@ class SegmentInterface {
     virtual bool
     Contain(const PkType& pk) const = 0;
 
+    // Search with optional external bitset (for two-stage search)
+    // When external_bitset is provided (non-null), skip filter computation and use it directly
     virtual std::unique_ptr<SearchResult>
     Search(const query::Plan* Plan,
            const query::PlaceholderGroup* placeholder_group,
            Timestamp timestamp,
            const folly::CancellationToken& cancel_token,
            int32_t consistency_level,
-           Timestamp collection_ttl) const = 0;
+           Timestamp collection_ttl,
+           const BitsetView* external_bitset = nullptr) const = 0;
 
     // Only used for test
     std::unique_ptr<SearchResult>
@@ -353,7 +356,8 @@ class SegmentInternalInterface : public SegmentInterface {
            Timestamp timestamp,
            const folly::CancellationToken& cancel_token,
            int32_t consistency_level,
-           Timestamp collection_ttl) const override;
+           Timestamp collection_ttl,
+           const BitsetView* external_bitset = nullptr) const override;
 
     void
     FillPrimaryKeys(const query::Plan* plan,

@@ -6,6 +6,7 @@ package segcore
 #include "common/type_c.h"
 #include "futures/future_c.h"
 #include "segcore/collection_c.h"
+#include "segcore/segment_c.h"
 #include "segcore/plan_c.h"
 #include "segcore/reduce_c.h"
 */
@@ -107,32 +108,182 @@ func (s *cSegmentImpl) HasFieldData(fieldID int64) bool {
 	return bool(ret)
 }
 
-// Search requests a search on the segment.
-func (s *cSegmentImpl) Search(ctx context.Context, searchReq *SearchRequest) (*SearchResult, error) {
-	traceCtx := ParseCTraceContext(ctx)
-	defer runtime.KeepAlive(traceCtx)
-	defer runtime.KeepAlive(searchReq)
+//////////////////////////////    unified search implementation    //////////////////////////////
 
-	future := cgo.Async(ctx,
-		func() cgo.CFuturePtr {
-			return (cgo.CFuturePtr)(C.AsyncSearch(
-				traceCtx.ctx,
-				s.ptr,
-				searchReq.plan.cSearchPlan,
-				searchReq.cPlaceholderGroup,
-				C.uint64_t(searchReq.mvccTimestamp),
-				C.int32_t(searchReq.consistencyLevel),
-				C.uint64_t(searchReq.collectionTTL),
-			))
-		},
-		cgo.WithName("search"),
+// SearchMode defines the execution mode for search operations
+type SearchMode int
+
+const (
+	// SearchModeFull performs full search (filter + vector search)
+	SearchModeFull SearchMode = iota
+	// SearchModeFilterOnly performs only scalar filtering (Stage 1 of two-stage search)
+	SearchModeFilterOnly
+	// SearchModeVectorWithBitset performs vector search with pre-computed bitset (Stage 2 of two-stage search)
+	SearchModeVectorWithBitset
+)
+
+// searchParams holds unified parameters for all search modes
+type searchParams struct {
+	ctx              context.Context
+	segment          *cSegmentImpl
+	plan             *SearchPlan
+	searchReq        *SearchRequest // nil for FilterOnly mode
+	timestamp        uint64
+	consistencyLevel int32
+	collectionTTL    uint64
+	mode             SearchMode
+	externalBitset   []byte // for VectorWithBitset mode only
+}
+
+// executeSearch is the unified internal implementation for all search modes.
+// It calls the unified C API AsyncSearch with appropriate parameters based on mode.
+func executeSearch(params *searchParams) (interface{}, error) {
+	traceCtx := ParseCTraceContext(params.ctx)
+	defer runtime.KeepAlive(traceCtx)
+	defer runtime.KeepAlive(params.searchReq)
+	defer runtime.KeepAlive(params.plan)
+	defer runtime.KeepAlive(params.externalBitset)
+
+	// Prepare parameters based on mode
+	var (
+		cPlan             C.CSearchPlan
+		cPlaceholderGroup C.CPlaceholderGroup
+		timestamp         uint64
+		consistencyLevel  int32
+		collectionTTL     uint64
+		bitsetPtr         *C.uint8_t
+		bitsetSize        int64
+		filterOnly        bool
+		taskName          string
 	)
+
+	switch params.mode {
+	case SearchModeFull:
+		cPlan = params.searchReq.plan.cSearchPlan
+		cPlaceholderGroup = params.searchReq.cPlaceholderGroup
+		timestamp = params.searchReq.mvccTimestamp
+		consistencyLevel = int32(params.searchReq.consistencyLevel)
+		collectionTTL = params.searchReq.collectionTTL
+		taskName = "search"
+	case SearchModeFilterOnly:
+		cPlan = params.plan.cSearchPlan
+		timestamp = params.timestamp
+		consistencyLevel = params.consistencyLevel
+		filterOnly = true
+		taskName = "search-filter-only"
+	case SearchModeVectorWithBitset:
+		cPlan = params.searchReq.plan.cSearchPlan
+		cPlaceholderGroup = params.searchReq.cPlaceholderGroup
+		timestamp = params.searchReq.mvccTimestamp
+		consistencyLevel = int32(params.searchReq.consistencyLevel)
+		collectionTTL = params.searchReq.collectionTTL
+		if len(params.externalBitset) > 0 {
+			bitsetPtr = (*C.uint8_t)(unsafe.Pointer(&params.externalBitset[0]))
+			bitsetSize = int64(len(params.externalBitset))
+		}
+		taskName = "search-with-bitset"
+	default:
+		return nil, errors.Errorf("unknown search mode: %d", params.mode)
+	}
+
+	// Call unified C API
+	future := cgo.Async(params.ctx, func() cgo.CFuturePtr {
+		return (cgo.CFuturePtr)(C.AsyncSearch(
+			traceCtx.ctx, params.segment.ptr, cPlan, cPlaceholderGroup,
+			C.uint64_t(timestamp), C.int32_t(consistencyLevel), C.uint64_t(collectionTTL),
+			bitsetPtr, C.int64_t(bitsetSize), C.bool(filterOnly),
+		))
+	}, cgo.WithName(taskName))
 	defer future.Release()
+
 	result, err := future.BlockAndLeakyGet()
 	if err != nil {
 		return nil, err
 	}
+
+	// Handle result based on mode
+	if params.mode == SearchModeFilterOnly {
+		cResult := (*C.CFilterResult)(result)
+		defer C.DeleteFilterResult(cResult)
+		var bitsetData []byte
+		if cResult.bitset_size > 0 && cResult.bitset_data != nil {
+			bitsetData = C.GoBytes(cResult.bitset_data, C.int(cResult.bitset_size))
+		}
+		return &FilterResult{
+			BitsetData:    bitsetData,
+			TotalRows:     int64(cResult.total_rows),
+			FilteredCount: int64(cResult.filtered_count),
+		}, nil
+	}
+
 	return &SearchResult{cSearchResult: (C.CSearchResult)(result)}, nil
+}
+
+//////////////////////////////    public API methods    //////////////////////////////
+
+// FilterResult represents the result of filter-only execution (Stage 1 of two-stage search)
+type FilterResult struct {
+	BitsetData    []byte // Serialized bitset data (1 = filtered out, 0 = pass)
+	TotalRows     int64  // Total rows in segment before filtering
+	FilteredCount int64  // Number of rows passing the filter (bitset cardinality)
+}
+
+// Search performs a unified search operation supporting all search modes.
+// The mode is determined by SearchOptions in the SearchRequest.
+func (s *cSegmentImpl) Search(ctx context.Context, searchReq *SearchRequest) (*UnifiedSearchResult, error) {
+	opts := searchReq.Options()
+	unifiedResult := &UnifiedSearchResult{}
+
+	var params *searchParams
+	var mode SearchMode
+
+	// Determine mode based on options
+	if opts != nil && opts.FilterOnly {
+		// Filter-only mode: only need plan, timestamp, and consistency level
+		// For filter-only, we don't need placeholder group, so we create params with plan only
+		mode = SearchModeFilterOnly
+		params = &searchParams{
+			ctx:              ctx,
+			segment:          s,
+			plan:             searchReq.plan,
+			timestamp:        uint64(searchReq.mvccTimestamp),
+			consistencyLevel: int32(searchReq.consistencyLevel),
+			mode:             mode,
+		}
+	} else if opts != nil && len(opts.ExternalBitset) > 0 {
+		// Search with bitset mode
+		mode = SearchModeVectorWithBitset
+		params = &searchParams{
+			ctx:            ctx,
+			segment:        s,
+			searchReq:      searchReq,
+			mode:           mode,
+			externalBitset: opts.ExternalBitset,
+		}
+	} else {
+		// Normal search mode
+		mode = SearchModeFull
+		params = &searchParams{
+			ctx:       ctx,
+			segment:   s,
+			searchReq: searchReq,
+			mode:      mode,
+		}
+	}
+
+	result, err := executeSearch(params)
+	if err != nil {
+		return nil, err
+	}
+
+	// Wrap result in UnifiedSearchResult
+	if mode == SearchModeFilterOnly {
+		unifiedResult.FilterResult = result.(*FilterResult)
+	} else {
+		unifiedResult.SearchResult = result.(*SearchResult)
+	}
+
+	return unifiedResult, nil
 }
 
 // Retrieve retrieves entities from the segment.

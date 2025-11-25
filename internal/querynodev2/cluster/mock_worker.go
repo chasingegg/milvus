@@ -637,6 +637,125 @@ func (_c *MockWorker_UpdateSchema_Call) RunAndReturn(run func(context.Context, *
 	return _c
 }
 
+// SearchFilterOnly provides a mock function with given fields: ctx, req
+func (_m *MockWorker) SearchFilterOnly(ctx context.Context, req *querypb.SearchRequest) (map[int64]*FilterResult, error) {
+	ret := _m.Called(ctx, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SearchFilterOnly")
+	}
+
+	var r0 map[int64]*FilterResult
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *querypb.SearchRequest) (map[int64]*FilterResult, error)); ok {
+		return rf(ctx, req)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *querypb.SearchRequest) map[int64]*FilterResult); ok {
+		r0 = rf(ctx, req)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[int64]*FilterResult)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *querypb.SearchRequest) error); ok {
+		r1 = rf(ctx, req)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockWorker_SearchFilterOnly_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SearchFilterOnly'
+type MockWorker_SearchFilterOnly_Call struct {
+	*mock.Call
+}
+
+// SearchFilterOnly is a helper method to define mock.On call
+//   - ctx context.Context
+//   - req *querypb.SearchRequest
+func (_e *MockWorker_Expecter) SearchFilterOnly(ctx interface{}, req interface{}) *MockWorker_SearchFilterOnly_Call {
+	return &MockWorker_SearchFilterOnly_Call{Call: _e.mock.On("SearchFilterOnly", ctx, req)}
+}
+
+func (_c *MockWorker_SearchFilterOnly_Call) Run(run func(ctx context.Context, req *querypb.SearchRequest)) *MockWorker_SearchFilterOnly_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*querypb.SearchRequest))
+	})
+	return _c
+}
+
+func (_c *MockWorker_SearchFilterOnly_Call) Return(_a0 map[int64]*FilterResult, _a1 error) *MockWorker_SearchFilterOnly_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockWorker_SearchFilterOnly_Call) RunAndReturn(run func(context.Context, *querypb.SearchRequest) (map[int64]*FilterResult, error)) *MockWorker_SearchFilterOnly_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SearchWithBitset provides a mock function with given fields: ctx, req, filterResults
+func (_m *MockWorker) SearchWithBitset(ctx context.Context, req *querypb.SearchRequest, filterResults map[int64]*FilterResult) (*internalpb.SearchResults, error) {
+	ret := _m.Called(ctx, req, filterResults)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SearchWithBitset")
+	}
+
+	var r0 *internalpb.SearchResults
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *querypb.SearchRequest, map[int64]*FilterResult) (*internalpb.SearchResults, error)); ok {
+		return rf(ctx, req, filterResults)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *querypb.SearchRequest, map[int64]*FilterResult) *internalpb.SearchResults); ok {
+		r0 = rf(ctx, req, filterResults)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*internalpb.SearchResults)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *querypb.SearchRequest, map[int64]*FilterResult) error); ok {
+		r1 = rf(ctx, req, filterResults)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MockWorker_SearchWithBitset_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SearchWithBitset'
+type MockWorker_SearchWithBitset_Call struct {
+	*mock.Call
+}
+
+// SearchWithBitset is a helper method to define mock.On call
+//   - ctx context.Context
+//   - req *querypb.SearchRequest
+//   - filterResults map[int64]*FilterResult
+func (_e *MockWorker_Expecter) SearchWithBitset(ctx interface{}, req interface{}, filterResults interface{}) *MockWorker_SearchWithBitset_Call {
+	return &MockWorker_SearchWithBitset_Call{Call: _e.mock.On("SearchWithBitset", ctx, req, filterResults)}
+}
+
+func (_c *MockWorker_SearchWithBitset_Call) Run(run func(ctx context.Context, req *querypb.SearchRequest, filterResults map[int64]*FilterResult)) *MockWorker_SearchWithBitset_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*querypb.SearchRequest), args[2].(map[int64]*FilterResult))
+	})
+	return _c
+}
+
+func (_c *MockWorker_SearchWithBitset_Call) Return(_a0 *internalpb.SearchResults, _a1 error) *MockWorker_SearchWithBitset_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockWorker_SearchWithBitset_Call) RunAndReturn(run func(context.Context, *querypb.SearchRequest, map[int64]*FilterResult) (*internalpb.SearchResults, error)) *MockWorker_SearchWithBitset_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewMockWorker creates a new instance of MockWorker. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewMockWorker(t interface {

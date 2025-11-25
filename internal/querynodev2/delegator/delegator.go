@@ -331,6 +331,10 @@ func (sd *shardDelegator) search(ctx context.Context, req *querypb.SearchRequest
 		}
 	}
 
+	if sd.shouldUseTwoStageSearch(req) {
+		return sd.twoStageSearch(ctx, req, sealed, growing, sealedRowCount)
+	}
+
 	// get final sealedNum after possible segment prune
 	sealedNum := lo.SumBy(sealed, func(item SnapshotItem) int { return len(item.Segments) })
 	log.Debug("search segments...",

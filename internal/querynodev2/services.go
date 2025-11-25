@@ -33,6 +33,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/msgpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
+	"github.com/milvus-io/milvus/internal/querynodev2/cluster"
 	"github.com/milvus-io/milvus/internal/querynodev2/delegator"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments"
 	"github.com/milvus-io/milvus/internal/querynodev2/tasks"
@@ -806,6 +807,150 @@ func (node *QueryNode) SearchSegments(ctx context.Context, req *querypb.SearchRe
 	}
 
 	tr.CtxElapse(ctx, fmt.Sprintf("search segments done, channel = %s, segmentIDs = %v",
+		channel,
+		req.GetSegmentIDs(),
+	))
+
+	latency := tr.ElapseSpan()
+	metrics.QueryNodeSQReqLatency.WithLabelValues(fmt.Sprint(node.GetNodeID()), metrics.SearchLabel, metrics.FromLeader).Observe(float64(latency.Milliseconds()))
+	metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(node.GetNodeID()), metrics.SearchLabel, metrics.SuccessLabel, metrics.FromLeader, fmt.Sprint(req.GetReq().GetCollectionID())).Inc()
+
+	resp = task.SearchResult()
+	resp.GetCostAggregation().ResponseTime = tr.ElapseSpan().Milliseconds()
+	resp.GetCostAggregation().TotalNQ = node.scheduler.GetWaitingTaskTotalNQ()
+	if req.GetReq().GetIsTopkReduce() {
+		resp.IsTopkReduce = true
+	}
+	resp.IsRecallEvaluation = req.GetReq().GetIsRecallEvaluation()
+	return resp, nil
+}
+
+// SearchFilterOnly executes filter-only stage of two-stage search on segments
+func (node *QueryNode) SearchFilterOnly(ctx context.Context, req *querypb.SearchRequest) (map[int64]*cluster.FilterResult, error) {
+	channel := req.GetDmlChannels()[0]
+	log := log.Ctx(ctx).With(
+		zap.Int64("msgID", req.GetReq().GetBase().GetMsgID()),
+		zap.Int64("collectionID", req.Req.GetCollectionID()),
+		zap.String("channel", channel),
+		zap.Int64s("segmentIDs", req.GetSegmentIDs()),
+	)
+
+	if err := node.lifetime.Add(merr.IsHealthy); err != nil {
+		return nil, err
+	}
+	defer node.lifetime.Done()
+
+	metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(node.GetNodeID()), metrics.SearchLabel, metrics.TotalLabel, metrics.FromLeader, fmt.Sprint(req.GetReq().GetCollectionID())).Inc()
+
+	log.Debug("start filter-only search on segments")
+
+	if !node.manager.Collection.Ref(req.Req.GetCollectionID(), 1) {
+		return nil, merr.WrapErrCollectionNotLoaded(req.GetReq().GetCollectionID())
+	}
+	collection := node.manager.Collection.Get(req.Req.GetCollectionID())
+	defer func() {
+		node.manager.Collection.Unref(req.GetReq().GetCollectionID(), 1)
+	}()
+
+	searchCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	tr := timerecord.NewTimeRecorder("searchFilterOnly")
+
+	task := tasks.NewSearchTaskFilterOnly(searchCtx, collection, node.manager, req, node.serverID)
+
+	if err := node.scheduler.Add(task); err != nil {
+		log.Warn("failed to add filter-only task to scheduler", zap.Error(err))
+		metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(node.GetNodeID()), metrics.SearchLabel, metrics.FailLabel, metrics.FromLeader, fmt.Sprint(req.GetReq().GetCollectionID())).Inc()
+		return nil, err
+	}
+
+	err := task.Wait()
+	if err != nil {
+		log.Warn("failed to execute filter-only search", zap.Error(err))
+		metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(node.GetNodeID()), metrics.SearchLabel, metrics.FailLabel, metrics.FromLeader, fmt.Sprint(req.GetReq().GetCollectionID())).Inc()
+		return nil, err
+	}
+
+	tr.CtxElapse(ctx, fmt.Sprintf("filter-only search done, channel = %s, segmentIDs = %v",
+		channel,
+		req.GetSegmentIDs(),
+	))
+
+	latency := tr.ElapseSpan()
+	metrics.QueryNodeSQReqLatency.WithLabelValues(fmt.Sprint(node.GetNodeID()), metrics.SearchLabel, metrics.FromLeader).Observe(float64(latency.Milliseconds()))
+	metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(node.GetNodeID()), metrics.SearchLabel, metrics.SuccessLabel, metrics.FromLeader, fmt.Sprint(req.GetReq().GetCollectionID())).Inc()
+
+	log.Debug("filter-only search completed", zap.Int("results", len(task.FilterResults())))
+	return task.FilterResults(), nil
+}
+
+// SearchWithBitset executes vector search stage of two-stage search using pre-computed bitsets
+func (node *QueryNode) SearchWithBitset(ctx context.Context, req *querypb.SearchRequest, filterResults map[int64]*cluster.FilterResult) (*internalpb.SearchResults, error) {
+	channel := req.GetDmlChannels()[0]
+	log := log.Ctx(ctx).With(
+		zap.Int64("msgID", req.GetReq().GetBase().GetMsgID()),
+		zap.Int64("collectionID", req.Req.GetCollectionID()),
+		zap.String("channel", channel),
+		zap.String("scope", req.GetScope().String()),
+	)
+	channelsMvcc := make(map[string]uint64)
+	for _, ch := range req.GetDmlChannels() {
+		channelsMvcc[ch] = req.GetReq().GetMvccTimestamp()
+	}
+	resp := &internalpb.SearchResults{
+		ChannelsMvcc: channelsMvcc,
+	}
+
+	if err := node.lifetime.Add(merr.IsHealthy); err != nil {
+		resp.Status = merr.Status(err)
+		return resp, nil
+	}
+	defer node.lifetime.Done()
+
+	metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(node.GetNodeID()), metrics.SearchLabel, metrics.TotalLabel, metrics.FromLeader, fmt.Sprint(req.GetReq().GetCollectionID())).Inc()
+	defer func() {
+		if !merr.Ok(resp.GetStatus()) {
+			metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(node.GetNodeID()), metrics.SearchLabel, metrics.FailLabel, metrics.FromLeader, fmt.Sprint(req.GetReq().GetCollectionID())).Inc()
+		}
+	}()
+
+	log.Debug("start to search with bitset on worker",
+		zap.Int64s("segmentIDs", req.GetSegmentIDs()),
+	)
+	searchCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	tr := timerecord.NewTimeRecorder("searchWithBitset")
+	log.Debug("search with bitset...")
+
+	if !node.manager.Collection.Ref(req.Req.GetCollectionID(), 1) {
+		err := merr.WrapErrCollectionNotLoaded(req.GetReq().GetCollectionID())
+		log.Warn("failed to search with bitset", zap.Error(err))
+		resp.Status = merr.Status(err)
+		return resp, nil
+	}
+	collection := node.manager.Collection.Get(req.Req.GetCollectionID())
+	defer func() {
+		node.manager.Collection.Unref(req.GetReq().GetCollectionID(), 1)
+	}()
+
+	task := tasks.NewSearchTaskWithBitset(searchCtx, collection, node.manager, req, filterResults, node.serverID)
+
+	if err := node.scheduler.Add(task); err != nil {
+		log.Warn("failed to add search with bitset task", zap.Error(err))
+		resp.Status = merr.Status(err)
+		return resp, nil
+	}
+
+	err := task.Wait()
+	if err != nil {
+		log.Warn("failed to search with bitset", zap.Error(err))
+		resp.Status = merr.Status(err)
+		return resp, nil
+	}
+
+	tr.CtxElapse(ctx, fmt.Sprintf("search with bitset done, channel = %s, segmentIDs = %v",
 		channel,
 		req.GetSegmentIDs(),
 	))

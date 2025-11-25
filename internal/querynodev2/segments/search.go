@@ -45,11 +45,11 @@ func searchSegments(ctx context.Context, mgr *Manager, segments []Segment, segTy
 	searcher := func(ctx context.Context, s Segment) error {
 		// record search time
 		tr := timerecord.NewTimeRecorder("searchOnSegments")
-		searchResult, err := s.Search(ctx, searchReq)
+		unifiedResult, err := s.Search(ctx, searchReq)
 		if err != nil {
 			return err
 		}
-		resultCh <- searchResult
+		resultCh <- unifiedResult.SearchResult
 		// update metrics
 		elapsed := tr.ElapseSpan().Milliseconds()
 		metrics.QueryNodeSQSegmentLatency.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()),
@@ -130,14 +130,14 @@ func searchSegmentsStreamly(ctx context.Context,
 	searcher := func(ctx context.Context, seg Segment) error {
 		// record search time
 		tr := timerecord.NewTimeRecorder("searchOnSegments")
-		searchResult, searchErr := seg.Search(ctx, searchReq)
+		unifiedResult, searchErr := seg.Search(ctx, searchReq)
 		searchDuration := tr.RecordSpan().Milliseconds()
 		if searchErr != nil {
 			return searchErr
 		}
 		reduceMutex.Lock()
-		searchResultsToClear = append(searchResultsToClear, searchResult)
-		reducedErr := streamReduce(searchResult)
+		searchResultsToClear = append(searchResultsToClear, unifiedResult.SearchResult)
+		reducedErr := streamReduce(unifiedResult.SearchResult)
 		reduceMutex.Unlock()
 		reduceDuration := tr.RecordSpan()
 		if reducedErr != nil {

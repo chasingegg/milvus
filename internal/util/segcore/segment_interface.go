@@ -65,8 +65,13 @@ type basicSegmentMethodSet interface {
 	// HasFieldData checks if the segment has field data.
 	HasFieldData(fieldID int64) bool
 
-	// Search requests a search on the segment.
-	Search(ctx context.Context, searchReq *SearchRequest) (*SearchResult, error)
+	// Search performs a unified search operation supporting all search modes.
+	// The mode is determined by SearchOptions in the SearchRequest:
+	// - If SearchOptions.FilterOnly is true: executes filter-only (returns FilterResult)
+	// - If SearchOptions.ExternalBitset is non-empty: executes search with bitset (returns SearchResult)
+	// - Otherwise: executes normal search (returns SearchResult)
+	// Returns UnifiedSearchResult which contains either SearchResult or FilterResult based on mode.
+	Search(ctx context.Context, searchReq *SearchRequest) (*UnifiedSearchResult, error)
 
 	// Retrieve retrieves entities from the segment.
 	Retrieve(ctx context.Context, plan *RetrievePlan) (*RetrieveResult, error)

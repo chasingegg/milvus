@@ -587,7 +587,11 @@ func (s *LocalSegment) ResetIndexesLazyLoad(lazyState bool) {
 	}
 }
 
-func (s *LocalSegment) Search(ctx context.Context, searchReq *segcore.SearchRequest) (*segcore.SearchResult, error) {
+// Search executes search on the segment. Behavior depends on SearchRequest.Options():
+//   - nil or default: normal search (filter + vector search)
+//   - FilterOnly=true: only scalar filtering (two-stage stage 1)
+//   - ExternalBitset!=nil: vector search with bitset (two-stage stage 2)
+func (s *LocalSegment) Search(ctx context.Context, searchReq *segcore.SearchRequest) (*segcore.UnifiedSearchResult, error) {
 	log := log.Ctx(ctx).WithLazy(
 		zap.Uint64("mvcc", searchReq.MVCC()),
 		zap.Int64("collectionID", s.Collection()),
@@ -596,24 +600,47 @@ func (s *LocalSegment) Search(ctx context.Context, searchReq *segcore.SearchRequ
 	)
 
 	if !s.ptrLock.PinIf(state.IsNotReleased) {
-		// TODO: check if the segment is readable but not released. too many related logic need to be refactor.
 		return nil, merr.WrapErrSegmentNotLoaded(s.ID(), "segment released")
 	}
 	defer s.ptrLock.Unpin()
 
-	hasIndex := s.ExistIndex(searchReq.SearchFieldID())
-	log = log.With(zap.Bool("withIndex", hasIndex))
-	log.Debug("search segment...")
+	opts := searchReq.Options()
 
-	tr := timerecord.NewTimeRecorder("cgoSearch")
-	result, err := s.csegment.Search(ctx, searchReq)
+	// Determine task name and log details based on mode
+	var taskName string
+	if opts != nil && opts.FilterOnly {
+		taskName = "cgoSearchFilterOnly"
+		log.Debug("search filter only segment...")
+	} else if opts != nil && len(opts.ExternalBitset) > 0 {
+		taskName = "cgoSearchWithBitset"
+		log = log.With(zap.Int("bitsetSize", len(opts.ExternalBitset)))
+		hasIndex := s.ExistIndex(searchReq.SearchFieldID())
+		log = log.With(zap.Bool("withIndex", hasIndex))
+		log.Debug("search with bitset segment...")
+	} else {
+		taskName = "cgoSearch"
+		hasIndex := s.ExistIndex(searchReq.SearchFieldID())
+		log = log.With(zap.Bool("withIndex", hasIndex))
+		log.Debug("search segment...")
+	}
+
+	tr := timerecord.NewTimeRecorder(taskName)
+	unifiedResult, err := s.csegment.Search(ctx, searchReq)
 	if err != nil {
-		log.Warn("Search failed")
+		log.Warn("Search failed", zap.Error(err))
 		return nil, err
 	}
 	metrics.QueryNodeSQSegmentLatencyInCore.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.SearchLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	log.Debug("search segment done")
-	return result, nil
+
+	if opts != nil && opts.FilterOnly && unifiedResult.FilterResult != nil {
+		log.Debug("search filter only segment done",
+			zap.Int64("totalRows", unifiedResult.FilterResult.TotalRows),
+			zap.Int64("filteredCount", unifiedResult.FilterResult.FilteredCount))
+	} else {
+		log.Debug("search segment done")
+	}
+
+	return unifiedResult, nil
 }
 
 func (s *LocalSegment) retrieve(ctx context.Context, plan *segcore.RetrievePlan, log *zap.Logger) (*segcore.RetrieveResult, error) {

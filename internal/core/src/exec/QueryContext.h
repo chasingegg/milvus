@@ -264,6 +264,22 @@ class QueryContext : public Context {
     }
 
     void
+    set_external_bitset(const milvus::BitsetView& bitset) {
+        external_bitset_ = bitset;
+        has_external_bitset_ = true;
+    }
+
+    bool
+    has_external_bitset() const {
+        return has_external_bitset_;
+    }
+
+    const milvus::BitsetView&
+    get_external_bitset() const {
+        return external_bitset_;
+    }
+
+    void
     set_search_result(milvus::SearchResult&& result) {
         search_result_ = std::move(result);
     }
@@ -319,7 +335,11 @@ class QueryContext : public Context {
     milvus::Timestamp collection_ttl_timestamp_;
     // used for vector search
     milvus::SearchInfo search_info_;
-    const query::PlaceholderGroup* placeholder_group_;
+    const query::PlaceholderGroup* placeholder_group_{nullptr};
+
+    // external bitset for two-stage search (skip filter computation)
+    milvus::BitsetView external_bitset_;
+    bool has_external_bitset_{false};
 
     // used for store segment search/retrieve result
     milvus::SearchResult search_result_;

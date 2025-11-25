@@ -62,6 +62,24 @@ class ExecPlanNodeVisitor : public PlanNodeVisitor {
         placeholder_group_ = nullptr;
     }
 
+    // Constructor with external bitset for two-stage search
+    ExecPlanNodeVisitor(const segcore::SegmentInterface& segment,
+                        Timestamp timestamp,
+                        const PlaceholderGroup* placeholder_group,
+                        const folly::CancellationToken& cancel_token,
+                        int32_t consistency_level,
+                        Timestamp collection_ttl,
+                        const BitsetView& external_bitset)
+        : segment_(segment),
+          timestamp_(timestamp),
+          placeholder_group_(placeholder_group),
+          cancel_token_(cancel_token),
+          consistency_level_(consistency_level),
+          collection_ttl_timestamp_(collection_ttl),
+          external_bitset_(external_bitset),
+          has_external_bitset_(true) {
+    }
+
     SearchResult
     get_moved_result(PlanNode& node) {
         assert(!search_result_opt_.has_value());
@@ -111,6 +129,10 @@ class ExecPlanNodeVisitor : public PlanNodeVisitor {
     RetrieveResultOpt retrieve_result_opt_;
 
     bool expr_use_pk_index_ = false;
+
+    // External bitset for two-stage search (skip filter computation)
+    BitsetView external_bitset_;
+    bool has_external_bitset_{false};
 };
 
 // for test use only
