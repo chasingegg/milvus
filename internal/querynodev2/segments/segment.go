@@ -617,6 +617,66 @@ func (s *LocalSegment) Search(ctx context.Context, searchReq *segcore.SearchRequ
 	return result, nil
 }
 
+// SearchFilterOnly executes only the scalar filtering part of a search (Stage 1 of two-stage search).
+// It returns the bitset result without performing vector search.
+func (s *LocalSegment) SearchFilterOnly(ctx context.Context, plan *segcore.SearchPlan, timestamp uint64, consistencyLevel int32) (*segcore.FilterResult, error) {
+	log := log.Ctx(ctx).WithLazy(
+		zap.Int64("collectionID", s.Collection()),
+		zap.Int64("segmentID", s.ID()),
+		zap.String("segmentType", s.segmentType.String()),
+	)
+
+	if !s.ptrLock.PinIf(state.IsNotReleased) {
+		return nil, merr.WrapErrSegmentNotLoaded(s.ID(), "segment released")
+	}
+	defer s.ptrLock.Unpin()
+
+	log.Debug("search filter only segment...")
+
+	tr := timerecord.NewTimeRecorder("cgoSearchFilterOnly")
+	result, err := s.csegment.SearchFilterOnly(ctx, plan, timestamp, consistencyLevel)
+	if err != nil {
+		log.Warn("SearchFilterOnly failed", zap.Error(err))
+		return nil, err
+	}
+	metrics.QueryNodeSQSegmentLatencyInCore.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.SearchLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
+	log.Debug("search filter only segment done",
+		zap.Int64("totalRows", result.TotalRows),
+		zap.Int64("filteredCount", result.FilteredCount))
+	return result, nil
+}
+
+// SearchWithBitset executes vector search using a pre-computed bitset (Stage 2 of two-stage search).
+// This skips the scalar filtering phase and uses the provided bitset directly.
+func (s *LocalSegment) SearchWithBitset(ctx context.Context, searchReq *segcore.SearchRequest, bitsetData []byte) (*segcore.SearchResult, error) {
+	log := log.Ctx(ctx).WithLazy(
+		zap.Uint64("mvcc", searchReq.MVCC()),
+		zap.Int64("collectionID", s.Collection()),
+		zap.Int64("segmentID", s.ID()),
+		zap.String("segmentType", s.segmentType.String()),
+		zap.Int("bitsetSize", len(bitsetData)),
+	)
+
+	if !s.ptrLock.PinIf(state.IsNotReleased) {
+		return nil, merr.WrapErrSegmentNotLoaded(s.ID(), "segment released")
+	}
+	defer s.ptrLock.Unpin()
+
+	hasIndex := s.ExistIndex(searchReq.SearchFieldID())
+	log = log.With(zap.Bool("withIndex", hasIndex))
+	log.Debug("search with bitset segment...")
+
+	tr := timerecord.NewTimeRecorder("cgoSearchWithBitset")
+	result, err := s.csegment.SearchWithBitset(ctx, searchReq, bitsetData)
+	if err != nil {
+		log.Warn("SearchWithBitset failed", zap.Error(err))
+		return nil, err
+	}
+	metrics.QueryNodeSQSegmentLatencyInCore.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.SearchLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
+	log.Debug("search with bitset segment done")
+	return result, nil
+}
+
 func (s *LocalSegment) retrieve(ctx context.Context, plan *segcore.RetrievePlan, log *zap.Logger) (*segcore.RetrieveResult, error) {
 	if !s.ptrLock.PinIf(state.IsNotReleased) {
 		// TODO: check if the segment is readable but not released. too many related logic need to be refactor.

@@ -3200,6 +3200,10 @@ type queryNodeConfig struct {
 	IDFWriteConcurrenct ParamItem `refreshable:"true"`
 	// partial search
 	PartialResultRequiredDataRatio ParamItem `refreshable:"true"`
+
+	// two-stage search
+	TwoStageSearchEnabled        ParamItem `refreshable:"true"`
+	TwoStageSearchMinFilterRatio ParamItem `refreshable:"true"`
 }
 
 func (p *queryNodeConfig) init(base *BaseTable) {
@@ -4352,6 +4356,24 @@ user-task-polling:
 		Export:       true,
 	}
 	p.PartialResultRequiredDataRatio.Init(base.mgr)
+
+	p.TwoStageSearchEnabled = ParamItem{
+		Key:          "queryNode.twoStageSearch.enabled",
+		Version:      "2.6.0",
+		DefaultValue: "false",
+		Doc:          `Enable two-stage search optimization. When enabled, search first executes filter-only to get actual filter selectivity, then uses this info to optimize search parameters before executing vector search.`,
+		Export:       true,
+	}
+	p.TwoStageSearchEnabled.Init(base.mgr)
+
+	p.TwoStageSearchMinFilterRatio = ParamItem{
+		Key:          "queryNode.twoStageSearch.minFilterRatio",
+		Version:      "2.6.0",
+		DefaultValue: "0.5",
+		Doc:          `Minimum filter ratio threshold for two-stage search. If actual filter ratio is above this threshold, fall back to normal single-stage search. Lower values (e.g., 0.1) mean two-stage is only used for very selective filters.`,
+		Export:       true,
+	}
+	p.TwoStageSearchMinFilterRatio.Init(base.mgr)
 }
 
 // /////////////////////////////////////////////////////////////////////////////

@@ -46,6 +46,9 @@
 #include "monitor/Monitor.h"
 #include "segcore/storagev2translator/JsonStatsTranslator.h"
 #include "common/GeometryCache.h"
+#include "query/ExecPlanNodeVisitor.h"
+#include "exec/QueryContext.h"
+#include "plan/PlanNode.h"
 
 //////////////////////////////    common interfaces    //////////////////////////////
 
@@ -180,6 +183,170 @@ DeleteSearchResult(CSearchResult search_result) {
     delete res;
 }
 
+//////////////////////////////    unified search implementation    //////////////////////////////
+
+// Search execution mode for unified implementation
+enum class SearchMode {
+    // Full search: filter + vector search (original AsyncSearch behavior)
+    Full,
+    // Filter only: execute scalar filtering, return bitset (Stage 1 of two-stage)
+    FilterOnly,
+    // Vector only with bitset: skip filtering, use provided bitset (Stage 2 of two-stage)
+    VectorWithBitset
+};
+
+// Unified search parameters
+struct SearchParams {
+    CTraceContext trace_ctx;
+    milvus::segcore::SegmentInterface* segment;
+    milvus::query::Plan* plan;
+    const milvus::query::PlaceholderGroup* phg_ptr;  // nullptr for FilterOnly
+    uint64_t timestamp;
+    int32_t consistency_level;
+    uint64_t collection_ttl;
+    SearchMode mode;
+    // For VectorWithBitset mode only
+    std::vector<uint8_t> external_bitset;
+};
+
+// Internal implementation for vector search (used by Full and VectorWithBitset modes)
+static milvus::SearchResult*
+ExecuteVectorSearch(
+    const SearchParams& params,
+    milvus::segcore::SegmentInternalInterface* internal_segment,
+    const milvus::BitsetView* bitset_view,  // nullptr means compute bitset internally
+    const char* span_name) {
+
+    // Set up trace context
+    auto& trace_ctx = params.plan->plan_node_->search_info_.trace_ctx_;
+    trace_ctx.traceID = params.trace_ctx.traceID;
+    trace_ctx.spanID = params.trace_ctx.spanID;
+    trace_ctx.traceFlags = params.trace_ctx.traceFlags;
+
+    auto span = milvus::tracer::StartSpan(span_name, &trace_ctx);
+    milvus::tracer::SetRootSpan(span);
+
+    milvus::SearchResult* result = nullptr;
+
+    if (params.mode == SearchMode::Full) {
+        // Full search: use segment's Search method which handles both filter and vector
+        params.segment->LazyCheckSchema(params.plan->schema_);
+        auto search_result = params.segment->Search(
+            params.plan, params.phg_ptr, params.timestamp,
+            params.consistency_level, params.collection_ttl);
+        result = search_result.release();
+    } else {
+        // VectorWithBitset: direct vector search with provided bitset
+        auto active_count = internal_segment->get_active_count(params.timestamp);
+
+        // Handle empty segment case
+        if (active_count == 0) {
+            auto empty_result = std::make_unique<milvus::SearchResult>();
+            empty_result->total_nq_ = params.phg_ptr->at(0).num_of_queries_;
+            empty_result->unity_topK_ = 0;
+            empty_result->total_data_cnt_ = 0;
+            span->End();
+            milvus::tracer::CloseRootSpan();
+            return empty_result.release();
+        }
+
+        auto& search_info = params.plan->plan_node_->search_info_;
+        auto num_queries = params.phg_ptr->at(0).num_of_queries_;
+
+        auto search_result = std::make_unique<milvus::SearchResult>();
+        search_result->total_nq_ = num_queries;
+        search_result->unity_topK_ = search_info.topk_;
+
+        milvus::OpContext op_context;
+
+        internal_segment->vector_search(
+            search_info,
+            params.phg_ptr->at(0).get_blob(),
+            nullptr,  // query_offsets
+            num_queries,
+            params.timestamp,
+            *bitset_view,
+            &op_context,
+            *search_result);
+
+        search_result->segment_ = internal_segment;
+        search_result->search_storage_cost_.scanned_remote_bytes =
+            op_context.storage_usage.scanned_cold_bytes.load();
+        search_result->search_storage_cost_.scanned_total_bytes =
+            op_context.storage_usage.scanned_total_bytes.load();
+
+        result = search_result.release();
+    }
+
+    // Negate distances if metric is not positively related
+    if (result && !milvus::PositivelyRelated(
+            params.plan->plan_node_->search_info_.metric_type_)) {
+        for (auto& dis : result->distances_) {
+            dis *= -1;
+        }
+    }
+
+    span->End();
+    milvus::tracer::CloseRootSpan();
+    return result;
+}
+
+// Internal implementation for filter-only execution
+static CFilterResult*
+ExecuteFilterOnly(
+    const SearchParams& params,
+    milvus::segcore::SegmentInternalInterface* internal_segment) {
+
+    auto trace_ctx = milvus::tracer::TraceContext{
+        params.trace_ctx.traceID, params.trace_ctx.spanID, params.trace_ctx.traceFlags};
+    milvus::tracer::AutoSpan span("SegCoreSearchFilterOnly", &trace_ctx, true);
+
+    auto active_count = internal_segment->get_active_count(params.timestamp);
+
+    auto result = new CFilterResult();
+    result->total_rows = active_count;
+
+    // Handle empty segment case
+    if (active_count == 0) {
+        result->bitset_data = nullptr;
+        result->bitset_size = 0;
+        result->filtered_count = 0;
+        return result;
+    }
+
+    // Execute filter using the plan's filter nodes
+    auto plan_fragment =
+        milvus::plan::PlanFragment(params.plan->plan_node_->plannodes_);
+
+    auto query_context = std::make_shared<milvus::exec::QueryContext>(
+        DEAFULT_QUERY_ID,
+        internal_segment,
+        active_count,
+        params.timestamp,
+        0,  // collection_ttl not needed for filter-only
+        params.consistency_level,
+        params.plan->plan_node_->plan_options_);
+
+    auto bitset = milvus::query::ExecPlanNodeVisitor::ExecuteTask(
+        plan_fragment, query_context);
+
+    // Calculate filtered count: bitset has 1=filtered out, 0=pass
+    auto filtered_out_count = bitset.count();
+    result->filtered_count = active_count - filtered_out_count;
+
+    // Serialize bitset data
+    auto bitset_byte_size = bitset.size_in_bytes();
+    auto bitset_buffer = new uint8_t[bitset_byte_size];
+    memcpy(bitset_buffer, bitset.data(), bitset_byte_size);
+
+    result->bitset_data = bitset_buffer;
+    result->bitset_size = bitset_byte_size;
+
+    return result;
+}
+
+//////////////////////////////    public C API wrappers    //////////////////////////////
+
 CFuture*  // Future<milvus::SearchResult*>
 AsyncSearch(CTraceContext c_trace,
             CSegmentInterface c_segment,
@@ -188,46 +355,103 @@ AsyncSearch(CTraceContext c_trace,
             uint64_t timestamp,
             int32_t consistency_level,
             uint64_t collection_ttl) {
-    auto segment = (milvus::segcore::SegmentInterface*)c_segment;
-    auto plan = (milvus::query::Plan*)c_plan;
+    auto segment = static_cast<milvus::segcore::SegmentInterface*>(c_segment);
+    auto plan = static_cast<milvus::query::Plan*>(c_plan);
     auto phg_ptr = reinterpret_cast<const milvus::query::PlaceholderGroup*>(
         c_placeholder_group);
 
     auto future = milvus::futures::Future<milvus::SearchResult>::async(
         milvus::futures::getGlobalCPUExecutor(),
         milvus::futures::ExecutePriority::HIGH,
-        [c_trace,
-         segment,
-         plan,
-         phg_ptr,
-         timestamp,
-         consistency_level,
-         collection_ttl](milvus::futures::CancellationToken cancel_token) {
-            // save trace context into search_info
-            auto& trace_ctx = plan->plan_node_->search_info_.trace_ctx_;
-            trace_ctx.traceID = c_trace.traceID;
-            trace_ctx.spanID = c_trace.spanID;
-            trace_ctx.traceFlags = c_trace.traceFlags;
-
-            auto span = milvus::tracer::StartSpan("SegCoreSearch", &trace_ctx);
-            milvus::tracer::SetRootSpan(span);
-
-            segment->LazyCheckSchema(plan->schema_);
-
-            auto search_result = segment->Search(
-                plan, phg_ptr, timestamp, consistency_level, collection_ttl);
-            if (!milvus::PositivelyRelated(
-                    plan->plan_node_->search_info_.metric_type_)) {
-                for (auto& dis : search_result->distances_) {
-                    dis *= -1;
-                }
-            }
-            span->End();
-            milvus::tracer::CloseRootSpan();
-            return search_result.release();
+        [c_trace, segment, plan, phg_ptr, timestamp, consistency_level, collection_ttl](
+            milvus::futures::CancellationToken cancel_token) {
+            SearchParams params{
+                c_trace, segment, plan, phg_ptr,
+                timestamp, consistency_level, collection_ttl,
+                SearchMode::Full, {}
+            };
+            return ExecuteVectorSearch(params, nullptr, nullptr, "SegCoreSearch");
         });
+
     return static_cast<CFuture*>(static_cast<void*>(
         static_cast<milvus::futures::IFuture*>(future.release())));
+}
+
+CFuture*  // Future<CFilterResult*>
+AsyncSearchFilterOnly(CTraceContext c_trace,
+                      CSegmentInterface c_segment,
+                      CSearchPlan c_plan,
+                      uint64_t timestamp,
+                      int32_t consistency_level) {
+    auto segment = dynamic_cast<milvus::segcore::SegmentInternalInterface*>(
+        static_cast<milvus::segcore::SegmentInterface*>(c_segment));
+    auto plan = static_cast<milvus::query::Plan*>(c_plan);
+
+    auto future = milvus::futures::Future<CFilterResult>::async(
+        milvus::futures::getGlobalCPUExecutor(),
+        milvus::futures::ExecutePriority::HIGH,
+        [c_trace, segment, plan, timestamp, consistency_level](
+            milvus::futures::CancellationToken cancel_token) {
+            SearchParams params{
+                c_trace, segment, plan, nullptr,
+                timestamp, consistency_level, 0,
+                SearchMode::FilterOnly, {}
+            };
+            return ExecuteFilterOnly(params, segment);
+        });
+
+    return static_cast<CFuture*>(static_cast<void*>(
+        static_cast<milvus::futures::IFuture*>(future.release())));
+}
+
+CFuture*  // Future<milvus::SearchResult*>
+AsyncSearchWithBitset(CTraceContext c_trace,
+                      CSegmentInterface c_segment,
+                      CSearchPlan c_plan,
+                      CPlaceholderGroup c_placeholder_group,
+                      const uint8_t* c_bitset_data,
+                      int64_t c_bitset_size,
+                      uint64_t timestamp,
+                      int32_t consistency_level,
+                      uint64_t collection_ttl) {
+    auto segment = dynamic_cast<milvus::segcore::SegmentInternalInterface*>(
+        static_cast<milvus::segcore::SegmentInterface*>(c_segment));
+    auto plan = static_cast<milvus::query::Plan*>(c_plan);
+    auto phg_ptr = reinterpret_cast<const milvus::query::PlaceholderGroup*>(
+        c_placeholder_group);
+
+    // Copy bitset data for capture
+    std::vector<uint8_t> bitset_copy(c_bitset_data, c_bitset_data + c_bitset_size);
+
+    auto future = milvus::futures::Future<milvus::SearchResult>::async(
+        milvus::futures::getGlobalCPUExecutor(),
+        milvus::futures::ExecutePriority::HIGH,
+        [c_trace, segment, plan, phg_ptr, bitset_copy = std::move(bitset_copy),
+         timestamp, consistency_level, collection_ttl](
+            milvus::futures::CancellationToken cancel_token) {
+            auto active_count = segment->get_active_count(timestamp);
+            milvus::BitsetView bitset_view(bitset_copy.data(), active_count);
+
+            SearchParams params{
+                c_trace, segment, plan, phg_ptr,
+                timestamp, consistency_level, collection_ttl,
+                SearchMode::VectorWithBitset, {}
+            };
+            return ExecuteVectorSearch(params, segment, &bitset_view, "SegCoreSearchWithBitset");
+        });
+
+    return static_cast<CFuture*>(static_cast<void*>(
+        static_cast<milvus::futures::IFuture*>(future.release())));
+}
+
+void
+DeleteFilterResult(CFilterResult* filter_result) {
+    if (filter_result) {
+        if (filter_result->bitset_data) {
+            delete[] static_cast<uint8_t*>(filter_result->bitset_data);
+        }
+        delete filter_result;
+    }
 }
 
 void

@@ -144,6 +144,16 @@ func (s *L0Segment) Search(ctx context.Context, searchReq *segcore.SearchRequest
 	return nil, nil
 }
 
+// SearchFilterOnly is not supported for L0 segments (they contain only delete data)
+func (s *L0Segment) SearchFilterOnly(ctx context.Context, plan *segcore.SearchPlan, timestamp uint64, consistencyLevel int32) (*segcore.FilterResult, error) {
+	return nil, merr.WrapErrServiceInternal("SearchFilterOnly not supported for L0 segment")
+}
+
+// SearchWithBitset is not supported for L0 segments (they contain only delete data)
+func (s *L0Segment) SearchWithBitset(ctx context.Context, searchReq *segcore.SearchRequest, bitsetData []byte) (*segcore.SearchResult, error) {
+	return nil, merr.WrapErrServiceInternal("SearchWithBitset not supported for L0 segment")
+}
+
 func (s *L0Segment) Retrieve(ctx context.Context, plan *segcore.RetrievePlan) (*segcorepb.RetrieveResults, error) {
 	return nil, nil
 }

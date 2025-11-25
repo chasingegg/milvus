@@ -108,6 +108,15 @@ type Segment interface {
 	Search(ctx context.Context, searchReq *segcore.SearchRequest) (*segcore.SearchResult, error)
 	Retrieve(ctx context.Context, plan *segcore.RetrievePlan) (*segcorepb.RetrieveResults, error)
 	RetrieveByOffsets(ctx context.Context, plan *segcore.RetrievePlanWithOffsets) (*segcorepb.RetrieveResults, error)
+
+	// Two-stage search operations
+	// SearchFilterOnly executes only the scalar filtering part of a search (Stage 1 of two-stage search).
+	// It returns the bitset result without performing vector search.
+	SearchFilterOnly(ctx context.Context, plan *segcore.SearchPlan, timestamp uint64, consistencyLevel int32) (*segcore.FilterResult, error)
+	// SearchWithBitset executes vector search using a pre-computed bitset (Stage 2 of two-stage search).
+	// This skips the scalar filtering phase and uses the provided bitset directly.
+	SearchWithBitset(ctx context.Context, searchReq *segcore.SearchRequest, bitsetData []byte) (*segcore.SearchResult, error)
+
 	IsLazyLoad() bool
 	ResetIndexesLazyLoad(lazyState bool)
 

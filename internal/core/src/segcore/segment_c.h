@@ -28,6 +28,18 @@ extern "C" {
 typedef void* CSearchResult;
 typedef CProto CRetrieveResult;
 
+//////////////////////////////    two-stage search types    //////////////////////////////
+/**
+ * @brief Result structure for filter-only execution (Stage 1 of two-stage search)
+ * Contains the bitset from scalar filtering and statistics needed for search optimization
+ */
+typedef struct CFilterResult {
+    void* bitset_data;          // Serialized bitset data (caller must free)
+    int64_t bitset_size;        // Size of bitset in bytes
+    int64_t total_rows;         // Total rows in segment before filtering
+    int64_t filtered_count;     // Number of rows passing the filter (bitset cardinality)
+} CFilterResult;
+
 //////////////////////////////    common interfaces    //////////////////////////////
 CStatus
 NewSegment(CCollection collection,
@@ -86,6 +98,66 @@ AsyncSearch(CTraceContext c_trace,
             uint64_t timestamp,
             int32_t consistency_level,
             uint64_t collection_ttl);
+
+//////////////////////////////    two-stage search interfaces    //////////////////////////////
+/**
+ * @brief Stage 1 of two-stage search: Execute filter-only and return bitset
+ *
+ * This function executes only the scalar filtering part of the search plan,
+ * returning the bitset result without performing vector search. The bitset
+ * can be used to:
+ * 1. Calculate filter selectivity for search parameter optimization
+ * 2. Cache the bitset for reuse in stage 2
+ *
+ * @param c_trace: Tracing context for distributed tracing
+ * @param c_segment: Segment to execute filter on
+ * @param c_plan: Search plan containing filter predicates
+ * @param timestamp: MVCC timestamp for consistency
+ * @param consistency_level: Consistency level for the query
+ * @return CFuture* Future that resolves to CFilterResult*
+ */
+CFuture*  // Future<CFilterResult*>
+AsyncSearchFilterOnly(CTraceContext c_trace,
+                      CSegmentInterface c_segment,
+                      CSearchPlan c_plan,
+                      uint64_t timestamp,
+                      int32_t consistency_level);
+
+/**
+ * @brief Stage 2 of two-stage search: Execute vector search with pre-computed bitset
+ *
+ * This function executes vector search using a pre-computed bitset, skipping
+ * the scalar filtering phase. This is used after stage 1 has computed the
+ * filter bitset and search parameters have been optimized.
+ *
+ * @param c_trace: Tracing context for distributed tracing
+ * @param c_segment: Segment to execute search on
+ * @param c_plan: Search plan (filter predicates will be ignored)
+ * @param c_placeholder_group: Query vectors
+ * @param c_bitset_data: Pre-computed bitset from stage 1 (1 = filtered out, 0 = pass)
+ * @param c_bitset_size: Size of bitset in bytes
+ * @param timestamp: MVCC timestamp for consistency
+ * @param consistency_level: Consistency level for the query
+ * @param collection_ttl: Collection TTL timestamp
+ * @return CFuture* Future that resolves to CSearchResult
+ */
+CFuture*  // Future<CSearchResultBody>
+AsyncSearchWithBitset(CTraceContext c_trace,
+                      CSegmentInterface c_segment,
+                      CSearchPlan c_plan,
+                      CPlaceholderGroup c_placeholder_group,
+                      const uint8_t* c_bitset_data,
+                      int64_t c_bitset_size,
+                      uint64_t timestamp,
+                      int32_t consistency_level,
+                      uint64_t collection_ttl);
+
+/**
+ * @brief Delete a filter result returned by AsyncSearchFilterOnly
+ * @param filter_result: Pointer to CFilterResult to delete
+ */
+void
+DeleteFilterResult(CFilterResult* filter_result);
 
 void
 DeleteRetrieveResult(CRetrieveResult* retrieve_result);

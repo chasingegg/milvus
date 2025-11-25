@@ -68,6 +68,14 @@ type basicSegmentMethodSet interface {
 	// Search requests a search on the segment.
 	Search(ctx context.Context, searchReq *SearchRequest) (*SearchResult, error)
 
+	// SearchFilterOnly executes only the scalar filtering part of a search (Stage 1 of two-stage search).
+	// It returns the bitset result without performing vector search.
+	SearchFilterOnly(ctx context.Context, plan *SearchPlan, timestamp uint64, consistencyLevel int32) (*FilterResult, error)
+
+	// SearchWithBitset executes vector search using a pre-computed bitset (Stage 2 of two-stage search).
+	// This skips the scalar filtering phase and uses the provided bitset directly.
+	SearchWithBitset(ctx context.Context, searchReq *SearchRequest, bitsetData []byte) (*SearchResult, error)
+
 	// Retrieve retrieves entities from the segment.
 	Retrieve(ctx context.Context, plan *RetrievePlan) (*RetrieveResult, error)
 
