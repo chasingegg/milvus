@@ -127,6 +127,28 @@ func NewSearchTaskFilterOnly(ctx context.Context,
 	return task
 }
 
+// SetMode sets the search mode for the task
+func (t *SearchTask) SetMode(mode SearchMode) {
+	t.mode = mode
+	if mode == SearchModeFilterOnly {
+		t.filterResults = make(map[int64]*cluster.FilterResult)
+	}
+}
+
+// SetExternalBitsets sets the external bitsets for two-stage search (stage 2)
+// The bitsets map contains segment ID -> bitset data
+func (t *SearchTask) SetExternalBitsets(bitsets map[int64][]byte) {
+	if t.filterResults == nil {
+		t.filterResults = make(map[int64]*cluster.FilterResult)
+	}
+	for segID, bitsetData := range bitsets {
+		t.filterResults[segID] = &cluster.FilterResult{
+			SegmentID:  segID,
+			BitsetData: bitsetData,
+		}
+	}
+}
+
 // Return the username which task is belong to.
 // Return "" if the task do not contain any user info.
 func (t *SearchTask) Username() string {
@@ -365,7 +387,7 @@ func (t *SearchTask) executeWithBitset(searchReq *segcore.SearchRequest) ([]*seg
 		searchReq.SetOptions(&segcore.SearchOptions{ExternalBitset: stats.BitsetData})
 		unifiedResult, err := seg.Search(t.ctx, searchReq)
 		if err != nil {
-			log.Warn("SearchWithBitset failed", zap.Int64("segmentID", segID), zap.Error(err))
+			log.Warn("Search with bitset failed", zap.Int64("segmentID", segID), zap.Error(err))
 			t.segmentManager.Segment.Unpin(searchedSegments)
 			segments.DeleteSearchResults(results)
 			return nil, nil, err

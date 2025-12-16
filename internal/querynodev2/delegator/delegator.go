@@ -353,12 +353,15 @@ func (sd *shardDelegator) search(ctx context.Context, req *querypb.SearchRequest
 		return nil, err
 	}
 	results, err := executeSubTasks(ctx, tasks, NewRowCountBasedEvaluator(sealedRowCount), func(ctx context.Context, req *querypb.SearchRequest, worker cluster.Worker) (*internalpb.SearchResults, error) {
-		resp, err := worker.SearchSegments(ctx, req)
-		status, ok := status.FromError(err)
-		if ok && status.Code() == codes.Unavailable {
+		result, err := worker.SearchSegments(ctx, req, nil) // nil options for normal search
+		st, ok := status.FromError(err)
+		if ok && st.Code() == codes.Unavailable {
 			sd.markSegmentOffline(req.GetSegmentIDs()...)
 		}
-		return resp, err
+		if err != nil {
+			return nil, err
+		}
+		return result.SearchResults, nil
 	}, "Search", log)
 	if err != nil {
 		log.Warn("Delegator search failed", zap.Error(err))

@@ -58,8 +58,8 @@ func (w *LocalWorker) DeleteBatch(ctx context.Context, req *querypb.DeleteBatchR
 	return w.node.DeleteBatch(ctx, req)
 }
 
-func (w *LocalWorker) SearchSegments(ctx context.Context, req *querypb.SearchRequest) (*internalpb.SearchResults, error) {
-	return w.node.SearchSegments(ctx, req)
+func (w *LocalWorker) SearchSegments(ctx context.Context, req *querypb.SearchRequest, opts *cluster.TwoStageSearchOptions) (*cluster.UnifiedSearchResult, error) {
+	return w.node.searchSegmentsInternal(ctx, req, opts)
 }
 
 func (w *LocalWorker) QueryStreamSegments(ctx context.Context, req *querypb.QueryRequest, srv streamrpc.QueryStreamServer) error {
@@ -85,14 +85,6 @@ func (w *LocalWorker) IsHealthy() bool {
 func (w *LocalWorker) DropIndex(ctx context.Context, req *querypb.DropIndexRequest) error {
 	status, err := w.node.DropIndex(ctx, req)
 	return merr.CheckRPCCall(status, err)
-}
-
-func (w *LocalWorker) SearchFilterOnly(ctx context.Context, req *querypb.SearchRequest) (map[int64]*cluster.FilterResult, error) {
-	return w.node.SearchFilterOnly(ctx, req)
-}
-
-func (w *LocalWorker) SearchWithBitset(ctx context.Context, req *querypb.SearchRequest, filterResults map[int64]*cluster.FilterResult) (*internalpb.SearchResults, error) {
-	return w.node.SearchWithBitset(ctx, req, filterResults)
 }
 
 func (w *LocalWorker) Stop() {

@@ -43,22 +43,44 @@ type FilterResult struct {
 	FilteredCount int64  // Number of rows filtered out
 }
 
+// TwoStageSearchOptions contains options for two-stage search execution
+// This allows unifying all search modes into a single interface
+type TwoStageSearchOptions struct {
+	// FilterOnly when true, executes only scalar filtering (stage 1 of two-stage search)
+	// Returns FilterResults in UnifiedSearchResult
+	FilterOnly bool
+	// ExternalBitsets when non-nil, provides pre-computed bitsets per segment (stage 2 of two-stage search)
+	// Map key is segment ID, value is the serialized bitset data
+	ExternalBitsets map[int64][]byte
+}
+
+// UnifiedSearchResult holds results from any search mode
+// Either SearchResults or FilterResults will be set based on the search mode
+type UnifiedSearchResult struct {
+	// SearchResults is set for normal search and search-with-bitset (stage 2) modes
+	SearchResults *internalpb.SearchResults
+	// FilterResults is set for filter-only (stage 1) mode
+	// Map key is segment ID
+	FilterResults map[int64]*FilterResult
+}
+
 // Worker is the interface definition for querynode worker role.
 type Worker interface {
 	LoadSegments(context.Context, *querypb.LoadSegmentsRequest) error
 	ReleaseSegments(context.Context, *querypb.ReleaseSegmentsRequest) error
 	Delete(ctx context.Context, req *querypb.DeleteRequest) error
 	DeleteBatch(ctx context.Context, req *querypb.DeleteBatchRequest) (*querypb.DeleteBatchResponse, error)
-	SearchSegments(ctx context.Context, req *querypb.SearchRequest) (*internalpb.SearchResults, error)
+	// SearchSegments performs search with optional two-stage search support.
+	// opts can be nil for normal search, or non-nil to enable two-stage search modes:
+	//   - opts.FilterOnly=true: executes filter-only (stage 1), returns FilterResults
+	//   - opts.ExternalBitsets!=nil: executes search with bitsets (stage 2), returns SearchResults
+	//   - opts=nil or both fields empty: normal search, returns SearchResults
+	SearchSegments(ctx context.Context, req *querypb.SearchRequest, opts *TwoStageSearchOptions) (*UnifiedSearchResult, error)
 	QuerySegments(ctx context.Context, req *querypb.QueryRequest) (*internalpb.RetrieveResults, error)
 	QueryStreamSegments(ctx context.Context, req *querypb.QueryRequest, srv streamrpc.QueryStreamServer) error
 	GetStatistics(ctx context.Context, req *querypb.GetStatisticsRequest) (*internalpb.GetStatisticsResponse, error)
 	UpdateSchema(ctx context.Context, req *querypb.UpdateSchemaRequest) (*commonpb.Status, error)
 	DropIndex(ctx context.Context, req *querypb.DropIndexRequest) error
-
-	// Two-stage search methods
-	SearchFilterOnly(ctx context.Context, req *querypb.SearchRequest) (map[int64]*FilterResult, error)
-	SearchWithBitset(ctx context.Context, req *querypb.SearchRequest, filterResults map[int64]*FilterResult) (*internalpb.SearchResults, error)
 
 	IsHealthy() bool
 	Stop()
@@ -203,15 +225,26 @@ func (w *remoteWorker) splitDeleteBatch(ctx context.Context, req *querypb.Delete
 	}, nil
 }
 
-func (w *remoteWorker) SearchSegments(ctx context.Context, req *querypb.SearchRequest) (*internalpb.SearchResults, error) {
+func (w *remoteWorker) SearchSegments(ctx context.Context, req *querypb.SearchRequest, opts *TwoStageSearchOptions) (*UnifiedSearchResult, error) {
+	// Two-stage search is a local optimization, not supported for remote workers
+	if opts != nil && opts.FilterOnly {
+		return nil, merr.WrapErrServiceInternal("two-stage search filter-only mode is not supported for remote workers")
+	}
+	if opts != nil && len(opts.ExternalBitsets) > 0 {
+		return nil, merr.WrapErrServiceInternal("two-stage search with bitsets is not supported for remote workers")
+	}
+
 	client := w.getClient()
 	ret, err := client.SearchSegments(ctx, req)
 	if err != nil && errors.Is(err, merr.ErrServiceUnimplemented) {
 		// for compatible with rolling upgrade from version before v2.2.9
-		return client.Search(ctx, req)
+		ret, err = client.Search(ctx, req)
+	}
+	if err != nil {
+		return nil, err
 	}
 
-	return ret, err
+	return &UnifiedSearchResult{SearchResults: ret}, nil
 }
 
 func (w *remoteWorker) QuerySegments(ctx context.Context, req *querypb.QueryRequest) (*internalpb.RetrieveResults, error) {
@@ -274,16 +307,6 @@ func (w *remoteWorker) DropIndex(ctx context.Context, req *querypb.DropIndexRequ
 		return err
 	}
 	return nil
-}
-
-func (w *remoteWorker) SearchFilterOnly(ctx context.Context, req *querypb.SearchRequest) (map[int64]*FilterResult, error) {
-	// Two-stage search is a local optimization, not supported for remote workers
-	return nil, merr.WrapErrServiceInternal("SearchFilterOnly is not supported for remote workers")
-}
-
-func (w *remoteWorker) SearchWithBitset(ctx context.Context, req *querypb.SearchRequest, filterResults map[int64]*FilterResult) (*internalpb.SearchResults, error) {
-	// Two-stage search is a local optimization, not supported for remote workers
-	return nil, merr.WrapErrServiceInternal("SearchWithBitset is not supported for remote workers")
 }
 
 func (w *remoteWorker) IsHealthy() bool {

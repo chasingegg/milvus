@@ -261,77 +261,77 @@ func (s *RemoteWorkerSuite) TestSearch() {
 	s.Run("normal_run", func() {
 		defer func() { s.mockClient.ExpectedCalls = nil }()
 
-		var result *internalpb.SearchResults
+		var clientResult *internalpb.SearchResults
 		var err error
 
-		result = &internalpb.SearchResults{
+		clientResult = &internalpb.SearchResults{
 			Status: &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success},
 		}
 		s.mockClient.EXPECT().SearchSegments(mock.Anything, mock.AnythingOfType("*querypb.SearchRequest")).
-			Return(result, err)
+			Return(clientResult, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		sr, serr := s.worker.SearchSegments(ctx, &querypb.SearchRequest{})
+		sr, serr := s.worker.SearchSegments(ctx, &querypb.SearchRequest{}, nil)
 
 		s.Equal(err, serr)
-		s.Equal(result, sr)
+		s.Equal(clientResult, sr.SearchResults)
 	})
 
 	s.Run("client_return_error", func() {
 		defer func() { s.mockClient.ExpectedCalls = nil }()
 
-		var result *internalpb.SearchResults
+		var clientResult *internalpb.SearchResults
 		err := errors.New("mocked error")
 		s.mockClient.EXPECT().SearchSegments(mock.Anything, mock.AnythingOfType("*querypb.SearchRequest")).
-			Return(result, err)
+			Return(clientResult, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		sr, serr := s.worker.SearchSegments(ctx, &querypb.SearchRequest{})
+		sr, serr := s.worker.SearchSegments(ctx, &querypb.SearchRequest{}, nil)
 
 		s.Equal(err, serr)
-		s.Equal(result, sr)
+		s.Nil(sr)
 	})
 
 	s.Run("client_return_fail_status", func() {
 		defer func() { s.mockClient.ExpectedCalls = nil }()
 
-		var result *internalpb.SearchResults
+		var clientResult *internalpb.SearchResults
 		var err error
 
-		result = &internalpb.SearchResults{
+		clientResult = &internalpb.SearchResults{
 			Status: &commonpb.Status{ErrorCode: commonpb.ErrorCode_UnexpectedError},
 		}
 		s.mockClient.EXPECT().SearchSegments(mock.Anything, mock.AnythingOfType("*querypb.SearchRequest")).
-			Return(result, err)
+			Return(clientResult, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		sr, serr := s.worker.SearchSegments(ctx, &querypb.SearchRequest{})
+		sr, serr := s.worker.SearchSegments(ctx, &querypb.SearchRequest{}, nil)
 
 		s.Equal(err, serr)
-		s.Equal(result, sr)
+		s.Equal(clientResult, sr.SearchResults)
 	})
 
 	s.Run("client_search_compatible", func() {
 		defer func() { s.mockClient.ExpectedCalls = nil }()
 
-		var result *internalpb.SearchResults
+		var clientResult *internalpb.SearchResults
 		var err error
 
 		grpcErr := status.Error(codes.Unimplemented, "method not implemented")
 		s.mockClient.EXPECT().SearchSegments(mock.Anything, mock.AnythingOfType("*querypb.SearchRequest")).
-			Return(result, merr.WrapErrServiceUnimplemented(grpcErr))
+			Return(clientResult, merr.WrapErrServiceUnimplemented(grpcErr))
 		s.mockClient.EXPECT().Search(mock.Anything, mock.AnythingOfType("*querypb.SearchRequest")).
-			Return(result, err)
+			Return(clientResult, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		sr, serr := s.worker.SearchSegments(ctx, &querypb.SearchRequest{})
+		sr, serr := s.worker.SearchSegments(ctx, &querypb.SearchRequest{}, nil)
 
 		s.Equal(err, serr)
-		s.Equal(result, sr)
+		s.Nil(sr.SearchResults)
 	})
 }
 

@@ -184,7 +184,7 @@ func (sd *shardDelegator) executeFilterStage(
 		return nil, err
 	}
 
-	// Execute filter-only tasks using worker.SearchFilterOnly
+	// Execute filter-only tasks using worker.SearchSegments with FilterOnly option
 	filterStats := make(map[int64]*FilterStats)
 	var mu sync.Mutex
 	var firstErr error
@@ -206,7 +206,8 @@ func (sd *shardDelegator) executeFilterStage(
 				}
 			}
 
-			results, err := worker.SearchFilterOnly(ctx, t.req)
+			// Use unified SearchSegments with FilterOnly option
+			result, err := worker.SearchSegments(ctx, t.req, &cluster.TwoStageSearchOptions{FilterOnly: true})
 			if err != nil {
 				st, ok := status.FromError(err)
 				if ok && st.Code() == codes.Unavailable {
@@ -215,7 +216,7 @@ func (sd *shardDelegator) executeFilterStage(
 				errCh <- err
 				return
 			}
-			resultCh <- results
+			resultCh <- result.FilterResults
 		}(task)
 	}
 
@@ -264,15 +265,24 @@ func (sd *shardDelegator) executeVectorSearchStage(
 		return nil, err
 	}
 
-	// Execute sub-tasks just like normal search, but use worker.SearchWithBitset
+	// Convert filterStats to bitsets map for unified interface
+	externalBitsets := make(map[int64][]byte)
+	for segID, stat := range filterStats {
+		externalBitsets[segID] = stat.BitsetData
+	}
+
+	// Execute sub-tasks just like normal search, but use SearchSegments with ExternalBitsets option
 	results, err := executeSubTasks(ctx, tasks, NewRowCountBasedEvaluator(sealedRowCount),
 		func(ctx context.Context, req *querypb.SearchRequest, worker cluster.Worker) (*internalpb.SearchResults, error) {
-			resp, err := worker.SearchWithBitset(ctx, req, filterStats)
+			result, err := worker.SearchSegments(ctx, req, &cluster.TwoStageSearchOptions{ExternalBitsets: externalBitsets})
 			st, ok := status.FromError(err)
 			if ok && st.Code() == codes.Unavailable {
 				sd.markSegmentOffline(req.GetSegmentIDs()...)
 			}
-			return resp, err
+			if err != nil {
+				return nil, err
+			}
+			return result.SearchResults, nil
 		}, "Search", log)
 	if err != nil {
 		log.Warn("Two-stage search executeSubTasks failed", zap.Error(err))
