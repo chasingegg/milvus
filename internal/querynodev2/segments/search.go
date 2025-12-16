@@ -27,30 +27,82 @@ import (
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments/metricsutil"
+	"github.com/milvus-io/milvus/internal/util/segcore"
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/timerecord"
 )
 
-// searchOnSegments performs search on listed segments
+// TwoStageSearchOptions contains options for two-stage search execution
+type TwoStageSearchOptions struct {
+	// FilterOnly when true, executes only scalar filtering (stage 1)
+	FilterOnly bool
+	// ExternalBitsets provides pre-computed bitsets per segment (stage 2)
+	// Map key is segment ID
+	ExternalBitsets map[int64][]byte
+}
+
+// FilterResult represents the result of filter-only execution
+type FilterResult struct {
+	SegmentID     int64
+	BitsetData    []byte
+	TotalRows     int64
+	FilteredCount int64
+}
+
+// TwoStageSearchResult holds results from two-stage search
+type TwoStageSearchResult struct {
+	// SearchResults for normal/stage-2 search
+	SearchResults []*SearchResult
+	// FilterResults for stage-1 filter-only, keyed by segment ID
+	FilterResults map[int64]*FilterResult
+}
+
+// searchSegmentsWithOptions performs search on listed segments with optional two-stage search support
 // all segment ids are validated before calling this function
-func searchSegments(ctx context.Context, mgr *Manager, segments []Segment, segType SegmentType, searchReq *SearchRequest) ([]*SearchResult, error) {
+func searchSegmentsWithOptions(ctx context.Context, mgr *Manager, segments []Segment, segType SegmentType, searchReq *SearchRequest, opts *TwoStageSearchOptions) (*TwoStageSearchResult, error) {
 	searchLabel := metrics.SealedSegmentLabel
 	if segType == commonpb.SegmentState_Growing {
 		searchLabel = metrics.GrowingSegmentLabel
 	}
 
-	resultCh := make(chan *SearchResult, len(segments))
-	searcher := func(ctx context.Context, s Segment) error {
-		// record search time
+	isFilterOnly := opts != nil && opts.FilterOnly
+	hasExternalBitsets := opts != nil && len(opts.ExternalBitsets) > 0
+
+	// Result channels
+	searchResultCh := make(chan *SearchResult, len(segments))
+	filterResultCh := make(chan *FilterResult, len(segments))
+
+	// Build searcher function
+	searcher := func(ctx context.Context, s Segment, segOpts *segcore.SearchOptions) error {
 		tr := timerecord.NewTimeRecorder("searchOnSegments")
+
+		// Set per-segment options if provided
+		if segOpts != nil {
+			searchReq.SetOptions(segOpts)
+		}
+
 		unifiedResult, err := s.Search(ctx, searchReq)
 		if err != nil {
 			return err
 		}
-		resultCh <- unifiedResult.SearchResult
-		// update metrics
+
+		if isFilterOnly {
+			// Collect filter results
+			fr := unifiedResult.FilterResult
+			filterResultCh <- &FilterResult{
+				SegmentID:     s.ID(),
+				BitsetData:    fr.BitsetData,
+				TotalRows:     fr.TotalRows,
+				FilteredCount: fr.FilteredCount,
+			}
+		} else {
+			// Collect search results
+			searchResultCh <- unifiedResult.SearchResult
+		}
+
+		// Update metrics
 		elapsed := tr.ElapseSpan().Milliseconds()
 		metrics.QueryNodeSQSegmentLatency.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()),
 			metrics.SearchLabel, searchLabel).Observe(float64(elapsed))
@@ -59,7 +111,7 @@ func searchSegments(ctx context.Context, mgr *Manager, segments []Segment, segTy
 		return nil
 	}
 
-	// calling segment search in goroutines
+	// Execute search on all segments in parallel
 	errGroup, ctx := errgroup.WithContext(ctx)
 	segmentsWithoutIndex := make([]int64, 0)
 	for _, segment := range segments {
@@ -67,6 +119,17 @@ func searchSegments(ctx context.Context, mgr *Manager, segments []Segment, segTy
 		if !seg.ExistIndex(searchReq.SearchFieldID()) {
 			segmentsWithoutIndex = append(segmentsWithoutIndex, seg.ID())
 		}
+
+		// Determine per-segment options
+		var segOpts *segcore.SearchOptions
+		if isFilterOnly {
+			segOpts = &segcore.SearchOptions{FilterOnly: true}
+		} else if hasExternalBitsets {
+			if bitset, ok := opts.ExternalBitsets[seg.ID()]; ok {
+				segOpts = &segcore.SearchOptions{ExternalBitset: bitset}
+			}
+		}
+
 		errGroup.Go(func() error {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -83,7 +146,9 @@ func searchSegments(ctx context.Context, mgr *Manager, segments []Segment, segTy
 				defer cancel()
 
 				var missing bool
-				missing, err = mgr.DiskCache.Do(ctx, seg.ID(), searcher)
+				missing, err = mgr.DiskCache.Do(ctx, seg.ID(), func(ctx context.Context, s Segment) error {
+					return searcher(ctx, s, segOpts)
+				})
 				if missing {
 					accessRecord.CacheMissing()
 				}
@@ -92,19 +157,31 @@ func searchSegments(ctx context.Context, mgr *Manager, segments []Segment, segTy
 				}
 				return err
 			}
-			return searcher(ctx, seg)
+			return searcher(ctx, seg, segOpts)
 		})
 	}
 	err := errGroup.Wait()
-	close(resultCh)
+	close(searchResultCh)
+	close(filterResultCh)
 
-	searchResults := make([]*SearchResult, 0, len(segments))
-	for result := range resultCh {
-		searchResults = append(searchResults, result)
+	// Collect results
+	result := &TwoStageSearchResult{}
+	if isFilterOnly {
+		result.FilterResults = make(map[int64]*FilterResult)
+		for fr := range filterResultCh {
+			result.FilterResults[fr.SegmentID] = fr
+		}
+	} else {
+		result.SearchResults = make([]*SearchResult, 0, len(segments))
+		for sr := range searchResultCh {
+			result.SearchResults = append(result.SearchResults, sr)
+		}
 	}
 
 	if err != nil {
-		DeleteSearchResults(searchResults)
+		if !isFilterOnly {
+			DeleteSearchResults(result.SearchResults)
+		}
 		return nil, err
 	}
 
@@ -112,7 +189,17 @@ func searchSegments(ctx context.Context, mgr *Manager, segments []Segment, segTy
 		log.Ctx(ctx).Debug("search growing/sealed segments without indexes", zap.Int64s("segmentIDs", segmentsWithoutIndex))
 	}
 
-	return searchResults, nil
+	return result, nil
+}
+
+// searchOnSegments performs search on listed segments
+// all segment ids are validated before calling this function
+func searchSegments(ctx context.Context, mgr *Manager, segments []Segment, segType SegmentType, searchReq *SearchRequest) ([]*SearchResult, error) {
+	result, err := searchSegmentsWithOptions(ctx, mgr, segments, segType, searchReq, nil)
+	if err != nil {
+		return nil, err
+	}
+	return result.SearchResults, nil
 }
 
 // searchSegmentsStreamly performs search on listed segments in a stream mode instead of a batch mode
@@ -204,6 +291,16 @@ func searchSegmentsStreamly(ctx context.Context,
 // if segIDs is specified, it will only search on the segments specified by the segIDs.
 // if partIDs is empty, it means all the partitions of the loaded collection or all the partitions loaded.
 func SearchHistorical(ctx context.Context, manager *Manager, searchReq *SearchRequest, collID int64, partIDs []int64, segIDs []int64) ([]*SearchResult, []Segment, error) {
+	result, segments, err := SearchHistoricalWithOptions(ctx, manager, searchReq, collID, partIDs, segIDs, nil)
+	if err != nil {
+		return nil, segments, err
+	}
+	return result.SearchResults, segments, nil
+}
+
+// SearchHistoricalWithOptions searches historical segments with optional two-stage search support.
+// opts can be nil for normal search, or non-nil to enable two-stage search modes.
+func SearchHistoricalWithOptions(ctx context.Context, manager *Manager, searchReq *SearchRequest, collID int64, partIDs []int64, segIDs []int64, opts *TwoStageSearchOptions) (*TwoStageSearchResult, []Segment, error) {
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
@@ -212,13 +309,23 @@ func SearchHistorical(ctx context.Context, manager *Manager, searchReq *SearchRe
 	if err != nil {
 		return nil, nil, err
 	}
-	searchResults, err := searchSegments(ctx, manager, segments, SegmentTypeSealed, searchReq)
-	return searchResults, segments, err
+	result, err := searchSegmentsWithOptions(ctx, manager, segments, SegmentTypeSealed, searchReq, opts)
+	return result, segments, err
 }
 
 // searchStreaming will search all the target segments in streaming
 // if partIDs is empty, it means all the partitions of the loaded collection or all the partitions loaded.
 func SearchStreaming(ctx context.Context, manager *Manager, searchReq *SearchRequest, collID int64, partIDs []int64, segIDs []int64) ([]*SearchResult, []Segment, error) {
+	result, segments, err := SearchStreamingWithOptions(ctx, manager, searchReq, collID, partIDs, segIDs, nil)
+	if err != nil {
+		return nil, segments, err
+	}
+	return result.SearchResults, segments, nil
+}
+
+// SearchStreamingWithOptions searches streaming segments with optional two-stage search support.
+// opts can be nil for normal search, or non-nil to enable two-stage search modes.
+func SearchStreamingWithOptions(ctx context.Context, manager *Manager, searchReq *SearchRequest, collID int64, partIDs []int64, segIDs []int64, opts *TwoStageSearchOptions) (*TwoStageSearchResult, []Segment, error) {
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
@@ -227,8 +334,8 @@ func SearchStreaming(ctx context.Context, manager *Manager, searchReq *SearchReq
 	if err != nil {
 		return nil, nil, err
 	}
-	searchResults, err := searchSegments(ctx, manager, segments, SegmentTypeGrowing, searchReq)
-	return searchResults, segments, err
+	result, err := searchSegmentsWithOptions(ctx, manager, segments, SegmentTypeGrowing, searchReq, opts)
+	return result, segments, err
 }
 
 func SearchHistoricalStreamly(ctx context.Context, manager *Manager, searchReq *SearchRequest,

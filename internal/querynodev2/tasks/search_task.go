@@ -206,11 +206,6 @@ func (t *SearchTask) Execute() error {
 		t.scheduleSpan.End()
 	}
 
-	// Handle filter-only mode separately
-	if t.mode == SearchModeFilterOnly {
-		return t.executeFilterOnly()
-	}
-
 	tr := timerecord.NewTimeRecorderWithTrace(t.ctx, "SearchTask")
 
 	req := t.req
@@ -227,36 +222,69 @@ func (t *SearchTask) Execute() error {
 	var (
 		results          []*segments.SearchResult
 		searchedSegments []segments.Segment
+		twoStageResult   *segments.TwoStageSearchResult
 	)
 
+	// Build two-stage options if needed
+	var opts *segments.TwoStageSearchOptions
 	switch t.mode {
+	case SearchModeFilterOnly:
+		opts = &segments.TwoStageSearchOptions{FilterOnly: true}
 	case SearchModeWithBitset:
-		results, searchedSegments, err = t.executeWithBitset(searchReq)
-	case SearchModeNormal:
-		if req.GetScope() == querypb.DataScope_Historical {
-			results, searchedSegments, err = segments.SearchHistorical(
-				t.ctx,
-				t.segmentManager,
-				searchReq,
-				req.GetReq().GetCollectionID(),
-				req.GetReq().GetPartitionIDs(),
-				req.GetSegmentIDs(),
-			)
-		} else if req.GetScope() == querypb.DataScope_Streaming {
-			results, searchedSegments, err = segments.SearchStreaming(
-				t.ctx,
-				t.segmentManager,
-				searchReq,
-				req.GetReq().GetCollectionID(),
-				req.GetReq().GetPartitionIDs(),
-				req.GetSegmentIDs(),
-			)
+		externalBitsets := make(map[int64][]byte)
+		for segID, fr := range t.filterResults {
+			externalBitsets[segID] = fr.BitsetData
 		}
+		opts = &segments.TwoStageSearchOptions{ExternalBitsets: externalBitsets}
+	}
+
+	// Execute search using unified functions
+	if req.GetScope() == querypb.DataScope_Historical {
+		twoStageResult, searchedSegments, err = segments.SearchHistoricalWithOptions(
+			t.ctx,
+			t.segmentManager,
+			searchReq,
+			req.GetReq().GetCollectionID(),
+			req.GetReq().GetPartitionIDs(),
+			req.GetSegmentIDs(),
+			opts,
+		)
+	} else if req.GetScope() == querypb.DataScope_Streaming {
+		twoStageResult, searchedSegments, err = segments.SearchStreamingWithOptions(
+			t.ctx,
+			t.segmentManager,
+			searchReq,
+			req.GetReq().GetCollectionID(),
+			req.GetReq().GetPartitionIDs(),
+			req.GetSegmentIDs(),
+			opts,
+		)
 	}
 	defer t.segmentManager.Segment.Unpin(searchedSegments)
 	if err != nil {
 		return err
 	}
+
+	// Handle filter-only mode: store filter results and return
+	if t.mode == SearchModeFilterOnly {
+		for segID, fr := range twoStageResult.FilterResults {
+			t.filterResults[segID] = &cluster.FilterResult{
+				SegmentID:     fr.SegmentID,
+				BitsetData:    fr.BitsetData,
+				TotalRows:     fr.TotalRows,
+				FilteredCount: fr.FilteredCount,
+			}
+		}
+		// Share filter results with merged tasks
+		for _, other := range t.others {
+			other.filterResults = t.filterResults
+		}
+		log.Debug("filter-only search completed", zap.Int("results", len(t.filterResults)))
+		return nil
+	}
+
+	// Normal and WithBitset modes: process search results
+	results = twoStageResult.SearchResults
 	defer segments.DeleteSearchResults(results)
 
 	// plan.MetricType is accurate, though req.MetricType may be empty
@@ -350,103 +378,6 @@ func (t *SearchTask) Execute() error {
 		}
 	}
 
-	return nil
-}
-
-// executeWithBitset executes search with pre-computed bitsets (for two-stage search)
-func (t *SearchTask) executeWithBitset(searchReq *segcore.SearchRequest) ([]*segments.SearchResult, []segments.Segment, error) {
-	log := log.Ctx(t.ctx).With(
-		zap.Int64("collectionID", t.collection.ID()),
-		zap.String("shard", t.req.GetDmlChannels()[0]),
-	)
-
-	var (
-		results          []*segments.SearchResult
-		searchedSegments []segments.Segment
-	)
-
-	for _, segID := range t.req.GetSegmentIDs() {
-		stats, ok := t.filterResults[segID]
-		if !ok {
-			log.Warn("No filter stats for segment", zap.Int64("segmentID", segID))
-			continue
-		}
-
-		segment, err := t.segmentManager.Segment.GetAndPinBy(segments.WithID(segID))
-		if err != nil {
-			log.Warn("Segment not found", zap.Int64("segmentID", segID), zap.Error(err))
-			continue
-		}
-		if len(segment) == 0 {
-			continue
-		}
-		seg := segment[0]
-		searchedSegments = append(searchedSegments, seg)
-
-		// Set external bitset option for unified Search
-		searchReq.SetOptions(&segcore.SearchOptions{ExternalBitset: stats.BitsetData})
-		unifiedResult, err := seg.Search(t.ctx, searchReq)
-		if err != nil {
-			log.Warn("Search with bitset failed", zap.Int64("segmentID", segID), zap.Error(err))
-			t.segmentManager.Segment.Unpin(searchedSegments)
-			segments.DeleteSearchResults(results)
-			return nil, nil, err
-		}
-		results = append(results, unifiedResult.SearchResult)
-	}
-
-	return results, searchedSegments, nil
-}
-
-// executeFilterOnly executes filter-only stage (for two-stage search stage 1)
-func (t *SearchTask) executeFilterOnly() error {
-	log := log.Ctx(t.ctx).With(
-		zap.Int64("collectionID", t.collection.ID()),
-		zap.Int64s("segmentIDs", t.req.GetSegmentIDs()),
-	)
-
-	searchReq, err := segcore.NewSearchRequest(t.collection.GetCCollection(), t.req, t.req.GetReq().GetPlaceholderGroup())
-	if err != nil {
-		return err
-	}
-	defer searchReq.Delete()
-
-	// Set filter-only option for unified Search
-	searchReq.SetOptions(&segcore.SearchOptions{FilterOnly: true})
-
-	for _, segID := range t.req.GetSegmentIDs() {
-		segment, err := t.segmentManager.Segment.GetAndPinBy(segments.WithID(segID))
-		if err != nil {
-			log.Warn("Segment not found for filter stage", zap.Int64("segmentID", segID), zap.Error(err))
-			continue
-		}
-		if len(segment) == 0 {
-			continue
-		}
-		seg := segment[0]
-		defer t.segmentManager.Segment.Unpin(segment)
-
-		unifiedResult, err := seg.Search(t.ctx, searchReq)
-		if err != nil {
-			log.Warn("Filter-only execution failed", zap.Int64("segmentID", segID), zap.Error(err))
-			return err
-		}
-
-		filterResult := unifiedResult.FilterResult
-		t.filterResults[segID] = &cluster.FilterResult{
-			SegmentID:     segID,
-			BitsetData:    filterResult.BitsetData,
-			TotalRows:     filterResult.TotalRows,
-			FilteredCount: filterResult.FilteredCount,
-		}
-	}
-
-	// Share filter results with merged tasks
-	for _, other := range t.others {
-		other.filterResults = t.filterResults
-	}
-
-	log.Debug("filter-only search completed", zap.Int("results", len(t.filterResults)))
 	return nil
 }
 
