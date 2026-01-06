@@ -87,5 +87,9 @@ func (w *LocalWorker) DropIndex(ctx context.Context, req *querypb.DropIndexReque
 	return merr.CheckRPCCall(status, err)
 }
 
+func (w *LocalWorker) SearchFilterOnly(ctx context.Context, req *querypb.SearchRequest) (map[int64]*cluster.FilterResult, error) {
+	return w.node.SearchFilterOnly(ctx, req)
+}
+
 func (w *LocalWorker) Stop() {
 }

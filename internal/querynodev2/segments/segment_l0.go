@@ -140,7 +140,8 @@ func (s *L0Segment) Level() datapb.SegmentLevel {
 	return datapb.SegmentLevel_L0
 }
 
-func (s *L0Segment) Search(ctx context.Context, searchReq *segcore.SearchRequest) (*segcore.SearchResult, error) {
+// Search is not supported for L0 segments (they contain only delete data)
+func (s *L0Segment) Search(ctx context.Context, searchReq *segcore.SearchRequest, filterOnly bool) (*segcore.SearchResult, error) {
 	return nil, nil
 }
 

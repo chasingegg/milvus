@@ -588,12 +588,15 @@ func (s *LocalSegment) ResetIndexesLazyLoad(lazyState bool) {
 	}
 }
 
-func (s *LocalSegment) Search(ctx context.Context, searchReq *segcore.SearchRequest) (*segcore.SearchResult, error) {
+// Search executes a search on the segment.
+// If filterOnly is true, only executes the filter and returns valid_count (Stage 1 of two-stage search).
+func (s *LocalSegment) Search(ctx context.Context, searchReq *segcore.SearchRequest, filterOnly bool) (*segcore.SearchResult, error) {
 	log := log.Ctx(ctx).WithLazy(
 		zap.Uint64("mvcc", searchReq.MVCC()),
 		zap.Int64("collectionID", s.Collection()),
 		zap.Int64("segmentID", s.ID()),
 		zap.String("segmentType", s.segmentType.String()),
+		zap.Bool("filterOnly", filterOnly),
 	)
 
 	if !s.ptrLock.PinIf(state.IsNotReleased) {
@@ -602,18 +605,24 @@ func (s *LocalSegment) Search(ctx context.Context, searchReq *segcore.SearchRequ
 	}
 	defer s.ptrLock.Unpin()
 
-	hasIndex := s.ExistIndex(searchReq.SearchFieldID())
-	log = log.With(zap.Bool("withIndex", hasIndex))
+	if !filterOnly {
+		hasIndex := s.ExistIndex(searchReq.SearchFieldID())
+		log = log.With(zap.Bool("withIndex", hasIndex))
+	}
 	log.Debug("search segment...")
 
 	tr := timerecord.NewTimeRecorder("cgoSearch")
-	result, err := s.csegment.Search(ctx, searchReq)
+	result, err := s.csegment.Search(ctx, searchReq, filterOnly)
 	if err != nil {
 		log.Warn("Search failed")
 		return nil, err
 	}
 	metrics.QueryNodeSQSegmentLatencyInCore.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.SearchLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
-	log.Debug("search segment done")
+	if filterOnly {
+		log.Debug("search filter only segment done", zap.Int64("validCount", result.ValidCount()))
+	} else {
+		log.Debug("search segment done")
+	}
 	return result, nil
 }
 

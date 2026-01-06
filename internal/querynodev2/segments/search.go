@@ -45,7 +45,7 @@ func searchSegments(ctx context.Context, mgr *Manager, segments []Segment, segTy
 	searcher := func(ctx context.Context, s Segment) error {
 		// record search time
 		tr := timerecord.NewTimeRecorder("searchOnSegments")
-		searchResult, err := s.Search(ctx, searchReq)
+		searchResult, err := s.Search(ctx, searchReq, false)
 		if err != nil {
 			return err
 		}
@@ -130,7 +130,7 @@ func searchSegmentsStreamly(ctx context.Context,
 	searcher := func(ctx context.Context, seg Segment) error {
 		// record search time
 		tr := timerecord.NewTimeRecorder("searchOnSegments")
-		searchResult, searchErr := seg.Search(ctx, searchReq)
+		searchResult, searchErr := seg.Search(ctx, searchReq, false)
 		searchDuration := tr.RecordSpan().Milliseconds()
 		if searchErr != nil {
 			return searchErr

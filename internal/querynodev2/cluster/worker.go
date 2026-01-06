@@ -35,6 +35,14 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 )
 
+// FilterResult represents the result of filter-only execution (Stage 1 of two-stage search).
+// Contains only the count of rows that pass the filter.
+// Bitset is NOT cached since filtering is lightweight and will be re-executed in stage 2.
+type FilterResult struct {
+	SegmentID  int64
+	ValidCount int64 // Number of rows that PASS the filter (will be searched)
+}
+
 // Worker is the interface definition for querynode worker role.
 type Worker interface {
 	LoadSegments(context.Context, *querypb.LoadSegmentsRequest) error
@@ -47,6 +55,10 @@ type Worker interface {
 	GetStatistics(ctx context.Context, req *querypb.GetStatisticsRequest) (*internalpb.GetStatisticsResponse, error)
 	UpdateSchema(ctx context.Context, req *querypb.UpdateSchemaRequest) (*commonpb.Status, error)
 	DropIndex(ctx context.Context, req *querypb.DropIndexRequest) error
+
+	// Two-stage search: Stage 1 filter-only returns stats for search optimization
+	// Stage 2 uses normal SearchSegments with optimized parameters
+	SearchFilterOnly(ctx context.Context, req *querypb.SearchRequest) (map[int64]*FilterResult, error)
 
 	IsHealthy() bool
 	Stop()
@@ -262,6 +274,11 @@ func (w *remoteWorker) DropIndex(ctx context.Context, req *querypb.DropIndexRequ
 		return err
 	}
 	return nil
+}
+
+func (w *remoteWorker) SearchFilterOnly(ctx context.Context, req *querypb.SearchRequest) (map[int64]*FilterResult, error) {
+	// Two-stage search is a local optimization, not supported for remote workers
+	return nil, merr.WrapErrServiceInternal("SearchFilterOnly is not supported for remote workers")
 }
 
 func (w *remoteWorker) IsHealthy() bool {

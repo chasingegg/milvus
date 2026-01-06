@@ -78,6 +78,13 @@ PhyVectorSearchNode::GetOutput() {
     std::chrono::high_resolution_clock::time_point vector_start =
         std::chrono::high_resolution_clock::now();
 
+    // For filter-only queries, placeholder_group_ can be null
+    if (placeholder_group_ == nullptr || placeholder_group_->empty()) {
+        // Return the input directly for filter-only mode
+        is_finished_ = true;
+        return input_;
+    }
+
     auto& ph = placeholder_group_->at(0);
     auto src_data = ph.get_blob();
     auto src_offsets = ph.get_offsets();
