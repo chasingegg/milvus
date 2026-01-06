@@ -41,6 +41,10 @@ type Worker interface {
 	ReleaseSegments(context.Context, *querypb.ReleaseSegmentsRequest) error
 	Delete(ctx context.Context, req *querypb.DeleteRequest) error
 	DeleteBatch(ctx context.Context, req *querypb.DeleteBatchRequest) (*querypb.DeleteBatchResponse, error)
+	// SearchSegments performs search on segments.
+	// If req.FilterOnly is true, only executes filter and returns per-segment valid counts in SearchResults.FilterValidCounts
+	// (corresponding to SealedSegmentIDsSearched). This is Stage 1 of two-stage search.
+	// If req.FilterOnly is false, performs normal vector search and returns search results.
 	SearchSegments(ctx context.Context, req *querypb.SearchRequest) (*internalpb.SearchResults, error)
 	QuerySegments(ctx context.Context, req *querypb.QueryRequest) (*internalpb.RetrieveResults, error)
 	QueryStreamSegments(ctx context.Context, req *querypb.QueryRequest, srv streamrpc.QueryStreamServer) error
@@ -198,7 +202,6 @@ func (w *remoteWorker) SearchSegments(ctx context.Context, req *querypb.SearchRe
 		// for compatible with rolling upgrade from version before v2.2.9
 		return client.Search(ctx, req)
 	}
-
 	return ret, err
 }
 

@@ -502,6 +502,21 @@ class SegmentInternalInterface : public SegmentInterface {
     get_active_count(Timestamp ts) const = 0;
 
     /**
+     * Execute filter-only mode: run only the filter expression and return
+     * the count of valid (non-filtered) rows. This extracts only FilterBitsNode
+     * from the plan to avoid interference from VectorSearchNode etc.
+     *
+     * @param plan The search plan containing filter expression
+     * @param timestamp The query timestamp for MVCC filtering
+     * @param consistency_level The consistency level
+     * @return The count of rows that pass the filter
+     */
+    int64_t
+    ExecuteFilterOnly(const query::Plan* plan,
+                      Timestamp timestamp,
+                      int32_t consistency_level) const;
+
+    /**
      * search offset by possible pk values and mvcc timestamp
      *
      * @param bitset The final bitset after id array filtering,

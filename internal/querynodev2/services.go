@@ -719,7 +719,9 @@ func (node *QueryNode) GetSegmentInfo(ctx context.Context, in *querypb.GetSegmen
 	}, nil
 }
 
-// only used for shard delegator search segments from worker
+// SearchSegments performs search on segments.
+// If req.FilterOnly is true, only executes filter and returns valid count per segment (Stage 1 of two-stage search).
+// If req.FilterOnly is false, performs normal vector search and returns search results.
 func (node *QueryNode) SearchSegments(ctx context.Context, req *querypb.SearchRequest) (*internalpb.SearchResults, error) {
 	channel := req.GetDmlChannels()[0]
 	log := log.Ctx(ctx).With(
@@ -768,8 +770,9 @@ func (node *QueryNode) SearchSegments(ctx context.Context, req *querypb.SearchRe
 		node.manager.Collection.Unref(req.GetReq().GetCollectionID(), 1)
 	}()
 
+	// Use streaming search only for normal search (not filter-only)
 	var task scheduler.Task
-	if paramtable.Get().QueryNodeCfg.UseStreamComputing.GetAsBool() {
+	if !req.GetFilterOnly() && paramtable.Get().QueryNodeCfg.UseStreamComputing.GetAsBool() {
 		task = tasks.NewStreamingSearchTask(searchCtx, collection, node.manager, req, node.serverID)
 	} else {
 		task = tasks.NewSearchTask(searchCtx, collection, node.manager, req, node.serverID)
@@ -798,12 +801,15 @@ func (node *QueryNode) SearchSegments(ctx context.Context, req *querypb.SearchRe
 	metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(node.GetNodeID()), metrics.SearchLabel, metrics.SuccessLabel, metrics.FromLeader, fmt.Sprint(req.GetReq().GetCollectionID())).Inc()
 
 	resp = task.SearchResult()
-	resp.GetCostAggregation().ResponseTime = tr.ElapseSpan().Milliseconds()
-	resp.GetCostAggregation().TotalNQ = node.scheduler.GetWaitingTaskTotalNQ()
-	if req.GetReq().GetIsTopkReduce() {
-		resp.IsTopkReduce = true
+	// Skip cost aggregation for filter-only mode (no CostAggregation in result)
+	if !req.GetFilterOnly() {
+		resp.GetCostAggregation().ResponseTime = tr.ElapseSpan().Milliseconds()
+		resp.GetCostAggregation().TotalNQ = node.scheduler.GetWaitingTaskTotalNQ()
+		if req.GetReq().GetIsTopkReduce() {
+			resp.IsTopkReduce = true
+		}
+		resp.IsRecallEvaluation = req.GetReq().GetIsRecallEvaluation()
 	}
-	resp.IsRecallEvaluation = req.GetReq().GetIsRecallEvaluation()
 	return resp, nil
 }
 

@@ -27,6 +27,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 )
 
+// Ensure LocalWorker implements cluster.Worker interface
 var _ cluster.Worker = &LocalWorker{}
 
 type LocalWorker struct {

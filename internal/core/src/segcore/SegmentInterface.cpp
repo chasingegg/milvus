@@ -18,8 +18,10 @@
 #include "common/SystemProperty.h"
 #include "common/Tracer.h"
 #include "common/Types.h"
+#include "exec/QueryContext.h"
 #include "monitor/Monitor.h"
 #include "query/ExecPlanNodeVisitor.h"
+#include "query/PlanProto.h"
 #include "futures/Future.h"
 
 namespace milvus::segcore {
@@ -112,6 +114,52 @@ SegmentInternalInterface::Search(
     *results = visitor.get_moved_result(*plan->plan_node_);
     results->segment_ = (void*)this;
     return results;
+}
+
+int64_t
+SegmentInternalInterface::ExecuteFilterOnly(const query::Plan* plan,
+                                            Timestamp timestamp,
+                                            int32_t consistency_level) const {
+    std::shared_lock lck(mutex_);
+
+    auto active_count = get_active_count(timestamp);
+    if (active_count == 0) {
+        return 0;
+    }
+
+    auto filter_only_plan =
+        query::ProtoParser::ExtractFilterOnlyPlan(plan->plan_node_->plannodes_);
+
+    if (!filter_only_plan) {
+        return active_count;
+    }
+
+    auto plan_fragment = plan::PlanFragment(filter_only_plan);
+    auto query_context =
+        std::make_shared<exec::QueryContext>(DEAFULT_QUERY_ID,
+                                             this,
+                                             active_count,
+                                             timestamp,
+                                             0,
+                                             consistency_level,
+                                             plan->plan_node_->plan_options_);
+
+    auto result =
+        query::ExecPlanNodeVisitor::ExecuteTask(plan_fragment, query_context);
+
+    if (result == nullptr || result->childrens().empty()) {
+        return active_count;
+    }
+
+    auto col_vec =
+        std::dynamic_pointer_cast<ColumnVector>(result->childrens()[0]);
+    AssertInfo(col_vec != nullptr,
+               "filter result must be a column vector with bitset");
+
+    BitsetTypeView view(col_vec->GetRawData(), col_vec->size());
+    auto valid_count = active_count - view.count();
+    LOG_INFO("filter only result validCount: {}, activeCount: {}", valid_count, active_count);
+    return valid_count;
 }
 
 std::unique_ptr<proto::segcore::RetrieveResults>

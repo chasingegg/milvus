@@ -1062,4 +1062,40 @@ ProtoParser::ParseScorer(const proto::plan::ScoreFunction& function) {
     }
 }
 
+std::shared_ptr<plan::PlanNode>
+ProtoParser::ExtractFilterOnlyPlan(
+    const std::shared_ptr<plan::PlanNode>& root_node) {
+    // Collect all pre-filter nodes using IsPreFilterNode() API.
+    // This automatically discovers any new filter node types without
+    // requiring manual updates to this function.
+    std::vector<std::shared_ptr<const plan::PlanNode>> filter_nodes;
+
+    std::function<void(const std::shared_ptr<plan::PlanNode>&)>
+        find_filter_nodes = [&](const std::shared_ptr<plan::PlanNode>& node) {
+            if (!node) {
+                return;
+            }
+            if (node->IsPreFilterNode()) {
+                filter_nodes.push_back(node);
+            }
+            for (const auto& source : node->sources()) {
+                find_filter_nodes(source);
+            }
+        };
+
+    find_filter_nodes(root_node);
+
+    // Rebuild plan by chaining all filter nodes -> MvccNode
+    std::vector<plan::PlanNodePtr> sources = {};
+    milvus::plan::PlanNodePtr plannode = nullptr;
+    for (const auto& node : filter_nodes) {
+        plannode = node->cloneForFilterOnlyPlan(sources);
+        if (plannode) {
+            sources = {plannode};
+        }
+    }
+
+    return std::make_shared<plan::MvccNode>(plan::GetNextPlanNodeId(), sources);
+}
+
 }  // namespace milvus::query

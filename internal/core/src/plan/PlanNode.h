@@ -71,6 +71,21 @@ class PlanNode {
         return {};
     };
 
+    // pre filter executed before the vector search node. e.g. FilterBitsNode, ElementFilterBitsNode
+    // currently only used in filter-only plan for two stage search
+    // (filter first and get valid count in each segment for delegator to optimize vector search params)
+    virtual bool
+    IsPreFilterNode() const = 0;
+
+    // Clone this node for use in a filter-only plan.
+    // Only pre-filter nodes (IsPreFilterNode() == true) should override this.
+    // Returns nullptr by default for non-pre-filter nodes.
+    virtual std::shared_ptr<PlanNode>
+    cloneForFilterOnlyPlan(
+        const std::vector<std::shared_ptr<PlanNode>>& new_sources) const {
+        return nullptr;
+    }
+
     std::string
     SourceToString() const {
         std::vector<std::string> sources_str;
@@ -85,6 +100,7 @@ class PlanNode {
 };
 
 using PlanNodePtr = std::shared_ptr<PlanNode>;
+
 class FilterNode : public PlanNode {
  public:
     FilterNode(const PlanNodeId& id,
@@ -122,6 +138,11 @@ class FilterNode : public PlanNode {
     std::string
     ToString() const override {
         return "";
+    }
+
+    bool
+    IsPreFilterNode() const override {
+        return false;
     }
 
  private:
@@ -177,6 +198,18 @@ class FilterBitsNode : public PlanNode {
         return info;
     }
 
+    bool
+    IsPreFilterNode() const override {
+        return true;
+    }
+
+    PlanNodePtr
+    cloneForFilterOnlyPlan(
+        const std::vector<PlanNodePtr>& new_sources) const override {
+        return std::make_shared<FilterBitsNode>(
+            GetNextPlanNodeId(), filter_, new_sources);
+    }
+
  private:
     const std::vector<PlanNodePtr> sources_;
     const expr::TypedExprPtr filter_;
@@ -230,6 +263,11 @@ class ElementFilterNode : public PlanNode {
             "ElementFilterNode:[struct_name:{}, element_filter:{}]",
             struct_name_,
             element_filter_->ToString());
+    }
+
+    bool
+    IsPreFilterNode() const override {
+        return false;
     }
 
  private:
@@ -296,6 +334,18 @@ class ElementFilterBitsNode : public PlanNode {
         return info;
     }
 
+    bool
+    IsPreFilterNode() const override {
+        return true;
+    }
+
+    PlanNodePtr
+    cloneForFilterOnlyPlan(
+        const std::vector<PlanNodePtr>& new_sources) const override {
+        return std::make_shared<ElementFilterBitsNode>(
+            GetNextPlanNodeId(), element_filter_, struct_name_, new_sources);
+    }
+
  private:
     const std::vector<PlanNodePtr> sources_;
     const expr::TypedExprPtr element_filter_;
@@ -342,6 +392,11 @@ class ProjectNode : public PlanNode {
         return field_ids_;
     }
 
+    bool
+    IsPreFilterNode() const override {
+        return false;
+    }
+
  private:
     const std::vector<PlanNodePtr> sources_;
     const std::vector<FieldId> field_ids_;
@@ -373,6 +428,11 @@ class MvccNode : public PlanNode {
     std::string
     ToString() const override {
         return fmt::format("MvccNode:[source_node:{}]", SourceToString());
+    }
+
+    bool
+    IsPreFilterNode() const override {
+        return false;
     }
 
  private:
@@ -413,6 +473,11 @@ class RandomSampleNode : public PlanNode {
         return factor_;
     }
 
+    bool
+    IsPreFilterNode() const override {
+        return false;
+    }
+
  private:
     float factor_;
     const std::vector<PlanNodePtr> sources_;
@@ -447,6 +512,11 @@ class VectorSearchNode : public PlanNode {
                            SourceToString());
     }
 
+    bool
+    IsPreFilterNode() const override {
+        return false;
+    }
+
  private:
     const std::vector<PlanNodePtr> sources_;
 };
@@ -478,6 +548,11 @@ class SearchGroupByNode : public PlanNode {
     ToString() const override {
         return fmt::format("SearchGroupByNode:\n\t[source node:{}]",
                            SourceToString());
+    }
+
+    bool
+    IsPreFilterNode() const override {
+        return false;
     }
 
  private:
@@ -527,6 +602,11 @@ class RescoresNode : public PlanNode {
     std::string
     ToString() const override {
         return fmt::format("RescoresNode:[source_node:{}]", SourceToString());
+    }
+
+    bool
+    IsPreFilterNode() const override {
+        return false;
     }
 
  private:
@@ -586,6 +666,11 @@ class AggregationNode : public PlanNode {
     const std::vector<Aggregate>&
     aggregates() const {
         return aggregates_;
+    }
+
+    bool
+    IsPreFilterNode() const override {
+        return false;
     }
 
  private:

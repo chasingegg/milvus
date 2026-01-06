@@ -45,6 +45,9 @@
 #include "exec/expression/ExprCache.h"
 #include "monitor/Monitor.h"
 #include "common/GeometryCache.h"
+#include "query/ExecPlanNodeVisitor.h"
+#include "exec/QueryContext.h"
+#include "plan/PlanNode.h"
 
 //////////////////////////////    common interfaces    //////////////////////////////
 
@@ -202,19 +205,30 @@ DeleteSearchResult(CSearchResult search_result) {
     delete res;
 }
 
-CFuture*  // Future<milvus::SearchResult>
+int64_t
+GetSearchResultValidCount(CSearchResult search_result) {
+    auto res = static_cast<milvus::SearchResult*>(search_result);
+    if (res == nullptr) {
+        return -1;
+    }
+    return res->valid_count_;
+}
+
+//////////////////////////////    public C API wrappers    //////////////////////////////
+
+CFuture*  // Future<milvus::SearchResult*>
 AsyncSearch(CTraceContext c_trace,
             CSegmentInterface c_segment,
             CSearchPlan c_plan,
             CPlaceholderGroup c_placeholder_group,
             uint64_t timestamp,
             int32_t consistency_level,
-            uint64_t collection_ttl) {
-    auto segment = static_cast<milvus::segcore::SegmentInterface*>(c_segment);
+            uint64_t collection_ttl,
+            bool filter_only) {
     auto plan = static_cast<milvus::query::Plan*>(c_plan);
     auto phg_ptr = reinterpret_cast<const milvus::query::PlaceholderGroup*>(
         c_placeholder_group);
-
+    auto segment = static_cast<milvus::segcore::SegmentInterface*>(c_segment);
     auto future = milvus::futures::Future<milvus::SearchResult>::async(
         milvus::futures::getGlobalCPUExecutor(),
         milvus::futures::ExecutePriority::HIGH,
@@ -224,34 +238,61 @@ AsyncSearch(CTraceContext c_trace,
          phg_ptr,
          timestamp,
          consistency_level,
-         collection_ttl](folly::CancellationToken cancel_token) {
-            // save trace context into search_info
+         collection_ttl,
+         filter_only](folly::CancellationToken cancel_token) {
+            // Set up trace context
             auto& trace_ctx = plan->plan_node_->search_info_.trace_ctx_;
             trace_ctx.traceID = c_trace.traceID;
             trace_ctx.spanID = c_trace.spanID;
             trace_ctx.traceFlags = c_trace.traceFlags;
 
-            auto span = milvus::tracer::StartSpan("SegCoreSearch", &trace_ctx);
+            auto span = milvus::tracer::StartSpan(
+                filter_only ? "SegCoreSearchFilterOnly" : "SegCoreSearch",
+                &trace_ctx);
             milvus::tracer::SetRootSpan(span);
 
             segment->LazyCheckSchema(plan->schema_);
 
-            auto search_result = segment->Search(plan,
-                                                 phg_ptr,
-                                                 timestamp,
-                                                 cancel_token,
-                                                 consistency_level,
-                                                 collection_ttl);
-            if (!milvus::PositivelyRelated(
-                    plan->plan_node_->search_info_.metric_type_)) {
-                for (auto& dis : search_result->distances_) {
-                    dis *= -1;
+            milvus::SearchResult* result = nullptr;
+
+            if (filter_only) {
+                // Filter-only mode: execute only the filter and return valid_count
+                // Uses unified ExecuteFilterOnly method from SegmentInternalInterface
+                auto internal_segment =
+                    dynamic_cast<milvus::segcore::SegmentInternalInterface*>(
+                        segment);
+
+                auto search_result = std::make_unique<milvus::SearchResult>();
+                search_result->total_nq_ = 0;
+                search_result->unity_topK_ = 0;
+                search_result->total_data_cnt_ = 0;
+                search_result->segment_ = segment;
+                search_result->valid_count_ =
+                    internal_segment->ExecuteFilterOnly(
+                        plan, timestamp, consistency_level);
+                result = search_result.release();
+            } else {
+                // Normal search mode
+                auto search_result = segment->Search(plan,
+                                                     phg_ptr,
+                                                     timestamp,
+                                                     cancel_token,
+                                                     consistency_level,
+                                                     collection_ttl);
+                if (!milvus::PositivelyRelated(
+                        plan->plan_node_->search_info_.metric_type_)) {
+                    for (auto& dis : search_result->distances_) {
+                        dis *= -1;
+                    }
                 }
+                result = search_result.release();
             }
+
             span->End();
             milvus::tracer::CloseRootSpan();
-            return search_result.release();
+            return result;
         });
+
     return static_cast<CFuture*>(static_cast<void*>(
         static_cast<milvus::futures::IFuture*>(future.release())));
 }
