@@ -506,9 +506,8 @@ ChunkedSegmentSealedImpl::load_field_data_internal(
 
             auto field_meta = schema_->operator[](field_id);
             // Use per-field warmup policy if set, otherwise fall back to global
-            std::string field_warmup_policy = !info.warmup_policy.empty()
-                                                  ? info.warmup_policy
-                                                  : load_info.warmup_policy;
+            std::string field_warmup_policy =
+                !info.warmup_policy.empty() ? info.warmup_policy : "";
             std::unique_ptr<Translator<milvus::Chunk>> translator =
                 std::make_unique<storagev1translator::ChunkTranslator>(
                     this->get_segment_id(),
@@ -1930,6 +1929,9 @@ ChunkedSegmentSealedImpl::LoadTextIndex(
     config[milvus::index::INDEX_FILES] = files;
     config[milvus::LOAD_PRIORITY] = info_proto->load_priority();
     config[milvus::index::ENABLE_MMAP] = info_proto->enable_mmap();
+    if (info_proto->warmup_policy() != "") {
+        config[milvus::index::WARMUP] = info_proto->warmup_policy();
+    }
     milvus::storage::FileManagerContext file_ctx(
         field_data_meta, index_meta, remote_chunk_manager, fs);
 
@@ -3312,7 +3314,7 @@ ChunkedSegmentSealedImpl::LoadBatchFieldData(
         LoadFieldDataInfo load_field_data_info;
         load_field_data_info.storage_version =
             segment_load_info_.GetStorageVersion();
-        // when child fields specified, field id is group id, child field ids are actual id values here
+        // xds specified, field id is group id, child field ids are actual id values here
         if (field_binlog.child_fields_size() > 0) {
             field_ids.reserve(field_binlog.child_fields_size());
             for (auto field_id : field_binlog.child_fields()) {
@@ -3401,8 +3403,7 @@ ChunkedSegmentSealedImpl::LoadBatchFieldData(
         // Determine group warmup policy: use per-field settings if any,
         // otherwise fall back to global warmup policy
         field_binlog_info.warmup_policy =
-            has_warmup_setting ? (warmup_sync ? "sync" : "disable")
-                               : field_data_info_.warmup_policy;
+            has_warmup_setting ? (warmup_sync ? "sync" : "disable") : "";
 
         // Store in map
         load_field_data_info.field_infos[group_id] = field_binlog_info;
