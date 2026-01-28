@@ -3159,19 +3159,6 @@ ChunkedSegmentSealedImpl::LoadColumnGroup(
             .GetChunkManager()
             ->GetRootPath();
 
-    // Aggregate warmup policy from child fields using OR logic:
-    // if ANY field requires 'sync', the entire group uses 'sync'
-    // Reset warmup settings to use field_data_info_ based approach
-    has_warmup_setting = false;
-    warmup_sync = false;
-    for (const auto& field_id : milvus_field_ids) {
-        auto iter = field_data_info_.field_infos.find(field_id.get());
-        if (iter != field_data_info_.field_infos.end() &&
-            !iter->second.warmup_policy.empty()) {
-            has_warmup_setting = true;
-            warmup_sync = warmup_sync || (iter->second.warmup_policy == "sync");
-        }
-    }
     // Determine warmup policy: use per-field settings if any,
     // otherwise pass empty string to fall back to global config
     std::string warmup_policy =
