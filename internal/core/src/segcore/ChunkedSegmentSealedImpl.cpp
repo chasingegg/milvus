@@ -3169,8 +3169,7 @@ ChunkedSegmentSealedImpl::LoadColumnGroup(
         if (iter != field_data_info_.field_infos.end() &&
             !iter->second.warmup_policy.empty()) {
             has_warmup_setting = true;
-            warmup_sync =
-                warmup_sync || (iter->second.warmup_policy == "sync");
+            warmup_sync = warmup_sync || (iter->second.warmup_policy == "sync");
         }
     }
     // Determine warmup policy: use per-field settings if any,
