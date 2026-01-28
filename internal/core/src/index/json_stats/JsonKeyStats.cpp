@@ -1061,7 +1061,8 @@ void
 JsonKeyStats::LoadSharedKeyIndex(
     const std::vector<std::string>& shared_key_index_files,
     bool enable_mmap,
-    int64_t index_size) {
+    int64_t index_size,
+    const std::string& warmup_policy) {
     segcore::storagev1translator::BsonInvertedIndexLoadInfo load_info;
     load_info.enable_mmap = enable_mmap;
     load_info.segment_id = segment_id_;
@@ -1069,7 +1070,7 @@ JsonKeyStats::LoadSharedKeyIndex(
     load_info.index_files = shared_key_index_files;
     load_info.index_size = index_size;
     load_info.load_priority = load_priority_;
-
+    load_info.warmup_policy = warmup_policy;
     std::unique_ptr<cachinglayer::Translator<index::BsonInvertedIndex>>
         translator = std::make_unique<
             segcore::storagev1translator::BsonInvertedIndexTranslator>(
@@ -1158,7 +1159,10 @@ JsonKeyStats::Load(milvus::tracer::TraceContext ctx, const Config& config) {
         GetValueFromConfig<int64_t>(config, milvus::index::INDEX_SIZE)
             .value_or(0);
     // load shared key index
-    LoadSharedKeyIndex(shared_key_index_files, enable_mmap, index_size);
+    LoadSharedKeyIndex(shared_key_index_files,
+                       enable_mmap,
+                       index_size,
+                       config.contains(WARMUP) ? config.at(WARMUP) : "");
 }
 
 IndexStatsPtr

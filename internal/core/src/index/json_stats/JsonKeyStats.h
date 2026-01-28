@@ -622,7 +622,8 @@ class JsonKeyStats : public ScalarIndex<std::string> {
     void
     LoadSharedKeyIndex(const std::vector<std::string>& shared_key_index_files,
                        bool enable_mmap,
-                       int64_t index_size);
+                       int64_t index_size,
+                       const std::string& warmup_policy = "");
 
  private:
     proto::schema::FieldSchema schema_;

@@ -505,9 +505,6 @@ ChunkedSegmentSealedImpl::load_field_data_internal(
             storage::SortByPath(file_infos);
 
             auto field_meta = schema_->operator[](field_id);
-            // Use per-field warmup policy if set, otherwise fall back to global
-            std::string field_warmup_policy =
-                !info.warmup_policy.empty() ? info.warmup_policy : "";
             std::unique_ptr<Translator<milvus::Chunk>> translator =
                 std::make_unique<storagev1translator::ChunkTranslator>(
                     this->get_segment_id(),
@@ -517,7 +514,7 @@ ChunkedSegmentSealedImpl::load_field_data_internal(
                     info.enable_mmap,
                     mmap_config.GetMmapPopulate(),
                     load_info.load_priority,
-                    field_warmup_policy);
+                    info.warmup_policy);
 
             auto data_type = field_meta.get_data_type();
             auto slot = cachinglayer::Manager::GetInstance().CreateCacheSlot(
@@ -2959,16 +2956,10 @@ ChunkedSegmentSealedImpl::fill_empty_field(const FieldMeta& field_meta) {
     int64_t size = num_rows_.value();
     AssertInfo(size > 0, "Chunked Sealed segment must have more than 0 row");
     auto field_data_info = FieldDataInfo(field_id.get(), size, mmap_dir_path);
-    // Determine warmup policy: use per-field setting if available,
-    // otherwise fall back to global warmup policy
-    std::string warmup_policy;
-    auto iter = field_data_info_.field_infos.find(field_id.get());
-    if (iter != field_data_info_.field_infos.end() &&
-        !iter->second.warmup_policy.empty()) {
-        warmup_policy = iter->second.warmup_policy;
-    } else {
-        warmup_policy = field_data_info_.warmup_policy;
-    }
+
+    auto [field_has_warmup, field_warmup_policy] = schema_->WarmupPolicy(
+        field_id, IsVectorDataType(data_type), /*is_index=*/false);
+    std::string warmup_policy = field_has_warmup ? field_warmup_policy : "";
     std::unique_ptr<Translator<milvus::Chunk>> translator =
         std::make_unique<storagev1translator::DefaultValueChunkTranslator>(
             get_segment_id(),
