@@ -40,8 +40,8 @@ DefaultValueChunkTranslator::DefaultValueChunkTranslator(
             // Cell IDs are identical to chunk IDs.
             milvus::cachinglayer::CellIdMappingMode::IDENTICAL,
             milvus::segcore::getCellDataType(
-                /* is_index */ false,
-                /* is_vector */ false),
+                IsVectorDataType(field_meta.get_data_type()),
+                /* is_index */ false),
             milvus::segcore::getCacheWarmupPolicy(
                 warmup_policy,
                 IsVectorDataType(field_meta.get_data_type()),
