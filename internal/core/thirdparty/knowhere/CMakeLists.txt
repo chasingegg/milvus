@@ -14,8 +14,8 @@
 # Update KNOWHERE_VERSION for the first occurrence
 milvus_add_pkg_config("knowhere")
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY INCLUDE_DIRECTORIES "")
-set( KNOWHERE_VERSION memory-corrupt-2.5 )
-set( GIT_REPOSITORY  "https://github.com/chasingegg/knowhere.git")
+set( KNOWHERE_VERSION v2.5.14 )
+set( GIT_REPOSITORY  "https://github.com/zilliztech/knowhere.git")
 message(STATUS "Knowhere repo: ${GIT_REPOSITORY}")
  message(STATUS "Knowhere version: ${KNOWHERE_VERSION}")
 
@@ -55,6 +55,21 @@ if ( NOT knowhere_POPULATED )
     # knowhere
     add_subdirectory( ${knowhere_SOURCE_DIR}
                       ${knowhere_BINARY_DIR} )
+endif()
+
+# Workaround for GCC 11 internal compiler error (ICE) in asan_expand_mark_ifn
+# when compiling ARM SVE code with AddressSanitizer enabled.
+if ( TARGET cardinal AND USE_ASAN STREQUAL "ON" )
+    file(GLOB_RECURSE CARDINAL_SVE_SRCS
+        "${knowhere_SOURCE_DIR}/thirdparty/cardinal/third_party/*sve*.cpp"
+    )
+    if ( CARDINAL_SVE_SRCS )
+        set_source_files_properties(
+            ${CARDINAL_SVE_SRCS}
+            DIRECTORY ${knowhere_SOURCE_DIR}
+            PROPERTIES COMPILE_OPTIONS "-fno-sanitize=address"
+        )
+    endif()
 endif()
 
 # get prometheus COMPILE_OPTIONS
