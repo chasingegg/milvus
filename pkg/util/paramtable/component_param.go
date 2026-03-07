@@ -3242,7 +3242,7 @@ Set to 0 to disable the penalty period.`,
 
 	p.AutoWarmupForNonPKIsolationCollection = ParamItem{
 		Key:          "queryCoord.autoWarmupForNonPKIsolationCollection",
-		Version:      "2.6.12",
+		Version:      "2.6.10",
 		DefaultValue: "false",
 		Doc:          `When enabled, forces vectorIndex, scalarField, and scalarIndex warmup to sync for collections without partition key isolation. vectorField is not affected.`,
 		Forbidden:    true,
