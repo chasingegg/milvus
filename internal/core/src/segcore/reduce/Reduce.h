@@ -73,7 +73,16 @@ class ReduceHelper {
                               std::vector<int64_t>& real_topks);
 
     void
+    FilterInvalidSearchResults();
+
+    void
     FillPrimaryKey();
+
+    void
+    TruncateToRefineTopk();
+
+    void
+    RefineDistances();
 
     void
     ReduceResultData();

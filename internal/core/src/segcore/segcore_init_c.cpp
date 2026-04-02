@@ -122,6 +122,27 @@ SegcoreSetRefineRatio(const float value) {
 }
 
 extern "C" void
+SegcoreSetGlobalRefineEnable(const bool value) {
+    milvus::segcore::SegcoreConfig& config =
+        milvus::segcore::SegcoreConfig::default_config();
+    config.set_global_refine_enable(value);
+}
+
+extern "C" void
+SegcoreSetSearchTopkRatio(const float value) {
+    milvus::segcore::SegcoreConfig& config =
+        milvus::segcore::SegcoreConfig::default_config();
+    config.set_search_topk_ratio(value);
+}
+
+extern "C" void
+SegcoreSetRefineTopkRatio(const float value) {
+    milvus::segcore::SegcoreConfig& config =
+        milvus::segcore::SegcoreConfig::default_config();
+    config.set_refine_topk_ratio(value);
+}
+
+extern "C" void
 SegcoreSetIndexBuildRatio(const float value) {
     milvus::segcore::SegcoreConfig& config =
         milvus::segcore::SegcoreConfig::default_config();

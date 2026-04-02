@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <memory>
 
 #include "common/Tracer.h"
@@ -46,6 +47,14 @@ struct SearchInfo {
     std::optional<std::string> json_path_;
     std::optional<milvus::DataType> json_type_;
     bool strict_cast_{false};
+    bool global_refine_enable_{false};
+    double search_topk_ratio_{1.0};
+    double refine_topk_ratio_{1.0};
+
+    int64_t
+    GetEffectiveSearchTopk() const {
+        return static_cast<int64_t>(std::ceil(search_topk_ratio_ * topk_));
+    }
 };
 
 using SearchInfoPtr = std::shared_ptr<SearchInfo>;

@@ -1,0 +1,27 @@
+CompileFlags:
+  CompilationDatabase: /data/work/milvus/cmake_build
+  Add:
+    - "-I/data/work/milvus/internal/core/src"
+    - "-I/data/work/milvus/internal/core/output/include"
+  Remove:
+    - "-W*"
+
+Diagnostics:
+  UnusedIncludes: None
+  ClangTidy:
+    Remove:
+      - modernize-use-trailing-return-type
+      - readability-identifier-length
+      - llvmlibc-*
+
+Index:
+  Background: Build
+
+InlayHints:
+  Enabled: true
+  ParameterNames: true
+  DeducedTypes: true
+
+Hover:
+  ShowAKA: true
+

@@ -29,6 +29,9 @@ namespace milvus::query {
 
 using Json = nlohmann::json;
 
+// Forward declaration for Plan::placeholder_group_
+struct PlaceholderGroup;
+
 struct ExtractedPlanInfo {
  public:
     explicit ExtractedPlanInfo(int64_t size) : involved_fields_(size) {
@@ -65,6 +68,9 @@ struct Plan {
  public:
     std::optional<ExtractedPlanInfo> extra_info_opt_;
     // TODO: add move extra info
+
+    // Set during ParsePlaceholderGroup, used for refine distances in reduce phase
+    const PlaceholderGroup* placeholder_group_{nullptr};
 };
 
 struct Placeholder {

@@ -49,6 +49,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 )
 
+
 func InitLocalChunkManager(path string) {
 	CLocalRootPath := C.CString(path)
 	defer C.free(unsafe.Pointer(CLocalRootPath))
@@ -591,6 +592,27 @@ func SetupCoreConfigChangelCallback() {
 			UpdateExprResCacheCapacityBytes(capacity)
 			return nil
 		})
+
+		paramtable.Get().AutoIndexConfig.GlobalRefineEnable.RegisterCallback(func(ctx context.Context, key, oldValue, newValue string) error {
+			enable := paramtable.Get().AutoIndexConfig.GlobalRefineEnable.GetAsBool()
+			log.Info("UpdateGlobalRefineEnable", zap.Bool("enable", enable))
+			C.SegcoreSetGlobalRefineEnable(C.bool(enable))
+			return nil
+		})
+
+		paramtable.Get().AutoIndexConfig.GlobalRefineSearchTopkRatio.RegisterCallback(func(ctx context.Context, key, oldValue, newValue string) error {
+			ratio := paramtable.Get().AutoIndexConfig.GlobalRefineSearchTopkRatio.GetAsFloat()
+			log.Info("UpdateGlobalRefineSearchTopkRatio", zap.Float64("searchTopkRatio", ratio))
+			C.SegcoreSetSearchTopkRatio(C.float(ratio))
+			return nil
+		})
+
+		paramtable.Get().AutoIndexConfig.GlobalRefineRefineTopkRatio.RegisterCallback(func(ctx context.Context, key, oldValue, newValue string) error {
+			ratio := paramtable.Get().AutoIndexConfig.GlobalRefineRefineTopkRatio.GetAsFloat()
+			log.Info("UpdateGlobalRefineRefineTopkRatio", zap.Float64("refineTopkRatio", ratio))
+			C.SegcoreSetRefineTopkRatio(C.float(ratio))
+			return nil
+		})
 	})
 }
 
@@ -630,7 +652,17 @@ func InitInterminIndexConfig(params *paramtable.ComponentParam) error {
 	denseVecIndexRefineQuantType := C.CString(params.QueryNodeCfg.InterimIndexRefineQuantType.GetValue())
 	defer C.free(unsafe.Pointer(denseVecIndexRefineQuantType))
 	status = C.SegcoreSetDenseVectorInterminIndexRefineQuantType(denseVecIndexRefineQuantType)
-	return HandleCStatus(&status, "InitInterminIndexConfig failed")
+	statErr = HandleCStatus(&status, "InitInterminIndexConfig failed")
+	if statErr != nil {
+		return statErr
+	}
+
+	globalRefineEnable := C.bool(params.AutoIndexConfig.GlobalRefineEnable.GetAsBool())
+	C.SegcoreSetGlobalRefineEnable(globalRefineEnable)
+	C.SegcoreSetSearchTopkRatio(C.float(params.AutoIndexConfig.GlobalRefineSearchTopkRatio.GetAsFloat()))
+	C.SegcoreSetRefineTopkRatio(C.float(params.AutoIndexConfig.GlobalRefineRefineTopkRatio.GetAsFloat()))
+
+	return nil
 }
 
 func InitGeometryCache(params *paramtable.ComponentParam) error {

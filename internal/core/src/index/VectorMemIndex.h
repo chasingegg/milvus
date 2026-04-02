@@ -99,6 +99,14 @@ class VectorMemIndex : public VectorIndex {
                     const knowhere::Json& json,
                     const BitsetView& bitset) const override;
 
+    knowhere::expected<knowhere::DataSetPtr>
+    CalcDistByIDs(const knowhere::DataSetPtr query_dataset,
+                  const BitsetView& bitset,
+                  const int64_t* labels,
+                  size_t labels_len,
+                  bool is_cosine,
+                  milvus::OpContext* op_context = nullptr) const override;
+
  protected:
     virtual void
     LoadWithoutAssemble(const BinarySet& binary_set, const Config& config);

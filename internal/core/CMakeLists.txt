@@ -41,6 +41,10 @@ if (USE_OPENDAL)
     add_definitions(-DUSE_OPENDAL)
 endif()
 
+if ( INDEX_ENGINE STREQUAL "cardinal" )
+    add_definitions(-DKNOWHERE_WITH_CARDINAL)
+endif()
+
 project(core)
 include(CheckCXXCompilerFlag)
 if ( APPLE )
