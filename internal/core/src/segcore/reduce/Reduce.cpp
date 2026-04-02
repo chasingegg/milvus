@@ -15,8 +15,13 @@
 #include <cstdint>
 #include <vector>
 
+#include <numeric>
 #include "common/EasyAssert.h"
+#include "common/Utils.h"
+#include "knowhere/comp/index_param.h"
+#include "knowhere/dataset.h"
 #include "monitor/Monitor.h"
+#include "query/PlanImpl.h"
 #include "segcore/SegmentInterface.h"
 #include "segcore/Utils.h"
 #include "segcore/pkVisitor.h"
@@ -56,7 +61,18 @@ ReduceHelper::Initialize() {
 
 void
 ReduceHelper::Reduce() {
-    FillPrimaryKey();
+    auto refine_topk_ratio = plan_->plan_node_->search_info_.refine_topk_ratio_;
+    if (refine_topk_ratio > 1.0) {
+        // Global reduce with refine: filter → truncate → refine distances → fill PK
+        FilterInvalidSearchResults();
+        TruncateToRefineTopk();
+        RefineDistances();
+        FillPrimaryKey();
+    } else {
+        // Original reduce flow
+        FilterInvalidSearchResults();
+        FillPrimaryKey();
+    }
     SortEqualScoresByPks();
     ReduceResultData();
     RefreshSearchResults();
@@ -129,27 +145,206 @@ ReduceHelper::FilterInvalidSearchResult(SearchResult* search_result) {
 }
 
 void
-ReduceHelper::FillPrimaryKey() {
-    tracer::AutoSpan span("ReduceHelper::FillPrimaryKey",
+ReduceHelper::FilterInvalidSearchResults() {
+    tracer::AutoSpan span("ReduceHelper::FilterInvalidSearchResults",
                           tracer::GetRootSpan());
-    // get primary keys for duplicates removal
     uint32_t valid_index = 0;
     for (auto& search_result : search_results_) {
-        // skip when results num is 0
         if (search_result->unity_topK_ == 0) {
             continue;
         }
         FilterInvalidSearchResult(search_result);
         LOG_DEBUG("the size of search result: {}",
                   search_result->seg_offsets_.size());
-        auto segment = static_cast<SegmentInterface*>(search_result->segment_);
         if (search_result->get_total_result_count() > 0) {
-            segment->FillPrimaryKeys(plan_, *search_result);
             search_results_[valid_index++] = search_result;
         }
     }
     search_results_.resize(valid_index);
     num_segments_ = search_results_.size();
+}
+
+void
+ReduceHelper::FillPrimaryKey() {
+    tracer::AutoSpan span("ReduceHelper::FillPrimaryKey",
+                          tracer::GetRootSpan());
+    for (auto& search_result : search_results_) {
+        auto segment = static_cast<SegmentInterface*>(search_result->segment_);
+        segment->FillPrimaryKeys(plan_, *search_result);
+    }
+}
+
+void
+ReduceHelper::TruncateToRefineTopk() {
+    auto max_slice_topk =
+        *std::max_element(slice_topKs_.begin(), slice_topKs_.end());
+    auto refine_topk_ratio = plan_->plan_node_->search_info_.refine_topk_ratio_;
+    auto refine_topk =
+        static_cast<int64_t>(std::ceil(refine_topk_ratio * max_slice_topk));
+    if (refine_topk <= max_slice_topk) {
+        return;
+    }
+
+    for (auto& search_result : search_results_) {
+        auto nq = search_result->total_nq_;
+        std::vector<int64_t> real_topks(nq, 0);
+        uint32_t valid_index = 0;
+
+        for (int64_t i = 0; i < nq; ++i) {
+            auto nq_begin = search_result->topk_per_nq_prefix_sum_[i];
+            auto nq_end = search_result->topk_per_nq_prefix_sum_[i + 1];
+            auto count = nq_end - nq_begin;
+            // results are already sorted by distance from the search,
+            // just keep at most refine_topk results
+            auto keep = std::min(static_cast<int64_t>(count), refine_topk);
+            for (int64_t j = 0; j < keep; ++j) {
+                auto src = nq_begin + j;
+                search_result->distances_[valid_index] =
+                    search_result->distances_[src];
+                search_result->seg_offsets_[valid_index] =
+                    search_result->seg_offsets_[src];
+                valid_index++;
+            }
+            real_topks[i] = keep;
+        }
+
+        search_result->distances_.resize(valid_index);
+        search_result->seg_offsets_.resize(valid_index);
+
+        std::partial_sum(real_topks.begin(),
+                         real_topks.end(),
+                         search_result->topk_per_nq_prefix_sum_.begin() + 1);
+    }
+}
+
+void
+ReduceHelper::RefineDistances() {
+    auto& search_info = plan_->plan_node_->search_info_;
+
+    // Need placeholder_group to get query vectors
+    auto placeholder_group = plan_->placeholder_group_;
+    if (placeholder_group == nullptr || placeholder_group->empty()) {
+        return;
+    }
+    auto& placeholder = placeholder_group->at(0);
+    auto field_id = search_info.field_id_;
+    bool is_cosine = search_info.metric_type_ == knowhere::metric::COSINE;
+    bool is_negated = !PositivelyRelated(search_info.metric_type_);
+    auto& field = plan_->schema_->operator[](field_id);
+    auto is_sparse = field.get_data_type() == DataType::VECTOR_SPARSE_U32_F32;
+    auto dim = is_sparse ? 0 : field.get_dim();
+
+    for (auto& search_result : search_results_) {
+        auto segment = static_cast<SegmentInterface*>(search_result->segment_);
+        auto nq = search_result->total_nq_;
+
+        for (int64_t qi = 0; qi < nq; ++qi) {
+            auto nq_begin = search_result->topk_per_nq_prefix_sum_[qi];
+            auto nq_end = search_result->topk_per_nq_prefix_sum_[qi + 1];
+            auto count = nq_end - nq_begin;
+            if (count == 0) {
+                continue;
+            }
+
+            // Build query dataset for this single query vector
+            knowhere::DataSetPtr query_dataset;
+            if (is_sparse) {
+                auto sparse_data = static_cast<
+                    const knowhere::sparse::SparseRow<SparseValueType>*>(
+                    placeholder.get_blob());
+                query_dataset = knowhere::GenDataSet(1, 0, sparse_data + qi);
+                query_dataset->SetIsSparse(true);
+            } else {
+                auto element_size =
+                    milvus::GetDataTypeSize(field.get_data_type(), dim);
+                auto query_ptr =
+                    static_cast<const char*>(placeholder.get_blob()) +
+                    qi * element_size;
+                query_dataset = knowhere::GenDataSet(1, dim, query_ptr);
+            }
+
+            // Collect seg_offsets for this query's candidates
+            auto* offsets = &search_result->seg_offsets_[nq_begin];
+
+            // Log coarse distances before refine
+            {
+                std::string coarse_str =
+                    "segment=" + std::to_string(segment->get_segment_id()) +
+                    " qi=" + std::to_string(qi) + " coarse_dist=[";
+                for (int64_t j = 0; j < count; ++j) {
+                    if (j > 0)
+                        coarse_str += ",";
+                    coarse_str +=
+                        std::to_string(search_result->distances_[nq_begin + j]);
+                }
+                coarse_str += "]";
+                LOG_INFO(coarse_str);
+            }
+
+            // Call CalcDistByIDs through the segment
+            std::vector<float> new_distances(count);
+            bool ok = segment->CalcDistByIDs(field_id,
+                                             query_dataset,
+                                             offsets,
+                                             count,
+                                             is_cosine,
+                                             new_distances.data());
+            if (!ok) {
+                LOG_INFO("segment={} qi={} CalcDistByIDs failed, skip refine",
+                         segment->get_segment_id(),
+                         qi);
+                continue;
+            }
+
+            // Apply same negation as search phase for L2 metrics
+            if (is_negated) {
+                for (auto& d : new_distances) {
+                    d *= -1;
+                }
+            }
+
+            // Log refined distances
+            {
+                std::string refine_str =
+                    "segment=" + std::to_string(segment->get_segment_id()) +
+                    " qi=" + std::to_string(qi) + " refine_dist=[";
+                for (int64_t j = 0; j < count; ++j) {
+                    if (j > 0)
+                        refine_str += ",";
+                    refine_str += std::to_string(new_distances[j]);
+                }
+                refine_str += "]";
+                LOG_INFO(refine_str);
+            }
+
+            // Update distances
+            for (int64_t j = 0; j < count; ++j) {
+                search_result->distances_[nq_begin + j] = new_distances[j];
+            }
+
+            // Re-sort this query's results by new distances (larger is better for all metrics
+            // since L2 is negated, IP/COSINE are naturally larger-is-better)
+            std::vector<size_t> indices(count);
+            std::iota(indices.begin(), indices.end(), 0);
+            std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
+                return new_distances[a] > new_distances[b];
+            });
+
+            // Apply permutation (primary_keys_ not filled yet, only sort distances and seg_offsets)
+            std::vector<float> sorted_distances(count);
+            std::vector<int64_t> sorted_offsets(count);
+            for (int64_t j = 0; j < count; ++j) {
+                sorted_distances[j] =
+                    search_result->distances_[nq_begin + indices[j]];
+                sorted_offsets[j] =
+                    search_result->seg_offsets_[nq_begin + indices[j]];
+            }
+            for (int64_t j = 0; j < count; ++j) {
+                search_result->distances_[nq_begin + j] = sorted_distances[j];
+                search_result->seg_offsets_[nq_begin + j] = sorted_offsets[j];
+            }
+        }
+    }
 }
 
 void
@@ -374,6 +569,10 @@ ReduceHelper::ReduceResultData() {
         for (int64_t qi = nq_begin; qi < nq_end; qi++) {
             filtered_count += ReduceSearchResultForOneNQ(
                 qi, slice_topKs_[slice_index], offset);
+            LOG_INFO("FUCK topk: {}, nq: {}, filtered_count: {}",
+                     slice_topKs_[slice_index],
+                     qi,
+                     filtered_count);
         }
     }
     if (filtered_count > 0) {

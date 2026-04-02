@@ -23,6 +23,7 @@
 #include <boost/dynamic_bitset.hpp>
 
 #include "Utils.h"
+#include "knowhere/comp/index_param.h"
 #include "knowhere/index/index_factory.h"
 #include "index/Index.h"
 #include "common/Types.h"
@@ -74,6 +75,18 @@ class VectorIndex : public IndexBase {
 
     virtual const bool
     HasRawData() const = 0;
+
+    virtual knowhere::expected<knowhere::DataSetPtr>
+    CalcDistByIDs(const knowhere::DataSetPtr query_dataset,
+                  const BitsetView& bitset,
+                  const int64_t* labels,
+                  size_t labels_len,
+                  bool is_cosine,
+                  milvus::OpContext* op_context = nullptr) const {
+        return knowhere::expected<knowhere::DataSetPtr>::Err(
+            knowhere::Status::not_implemented,
+            "CalcDistByIDs not supported for current index type");
+    }
 
     virtual std::vector<uint8_t>
     GetVector(const DatasetPtr dataset) const = 0;
@@ -130,6 +143,12 @@ class VectorIndex : public IndexBase {
 
         search_cfg[knowhere::meta::METRIC_TYPE] = search_info.metric_type_;
         search_cfg[knowhere::meta::TOPK] = search_info.topk_;
+
+        // When global reduce with refine is enabled, skip knowhere's internal refine
+        // since we do our own refine in the reduce phase via CalcDistByIDs
+        if (search_info.refine_topk_ratio_ > 1.0) {
+            search_cfg[knowhere::indexparam::REFINE] = false;
+        }
 
         // save trace context into search conf
         if (search_info.trace_ctx_.traceID != nullptr &&

@@ -122,6 +122,14 @@ class ChunkedSegmentSealedImpl : public SegmentSealed {
     bool
     HasRawData(int64_t field_id) const override;
 
+    bool
+    CalcDistByIDs(FieldId field_id,
+                  const knowhere::DataSetPtr& query_dataset,
+                  const int64_t* seg_offsets,
+                  size_t count,
+                  bool is_cosine,
+                  float* distances) const override;
+
     DataType
     GetFieldDataType(FieldId fieldId) const override;
 

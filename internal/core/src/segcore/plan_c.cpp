@@ -68,6 +68,8 @@ ParsePlaceholderGroup(CSearchPlan c_plan,
         auto status = CStatus();
         status.error_code = milvus::Success;
         status.error_msg = "";
+        // Store the PlaceholderGroup pointer in Plan for use during reduce phase (refine distances)
+        plan->placeholder_group_ = res.get();
         auto group = (CPlaceholderGroup)res.release();
         *res_placeholder_group = group;
         return status;

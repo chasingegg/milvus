@@ -184,6 +184,12 @@ class StreamReducerHelper {
     void
     ReduceResultData();
 
+    void
+    TruncateToRefineTopk();
+
+    void
+    RefineDistances();
+
  private:
     void
     RefreshSearchResult();

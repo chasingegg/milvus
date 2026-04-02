@@ -10,6 +10,11 @@
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
 #include "StreamReduce.h"
+
+#include <numeric>
+#include "common/Utils.h"
+#include "knowhere/comp/index_param.h"
+#include "knowhere/dataset.h"
 #include "segcore/SegmentInterface.h"
 #include "segcore/Utils.h"
 #include "segcore/reduce/Reduce.h"
@@ -170,9 +175,169 @@ StreamReducerHelper::AssembleMergedResult() {
 }
 
 void
+StreamReducerHelper::TruncateToRefineTopk() {
+    auto max_slice_topk =
+        *std::max_element(slice_topKs_.begin(), slice_topKs_.end());
+    auto refine_topk_ratio = plan_->plan_node_->search_info_.refine_topk_ratio_;
+    auto refine_topk =
+        static_cast<int64_t>(std::ceil(refine_topk_ratio * max_slice_topk));
+    if (refine_topk <= max_slice_topk) {
+        return;
+    }
+
+    for (auto& search_result : search_results_to_merge_) {
+        auto nq = search_result->total_nq_;
+        std::vector<int64_t> real_topks(nq, 0);
+        uint32_t valid_index = 0;
+
+        for (int64_t i = 0; i < nq; ++i) {
+            auto nq_begin = search_result->topk_per_nq_prefix_sum_[i];
+            auto nq_end = search_result->topk_per_nq_prefix_sum_[i + 1];
+            auto count = nq_end - nq_begin;
+            auto keep = std::min(static_cast<int64_t>(count), refine_topk);
+            for (int64_t j = 0; j < keep; ++j) {
+                auto src = nq_begin + j;
+                search_result->distances_[valid_index] =
+                    search_result->distances_[src];
+                search_result->seg_offsets_[valid_index] =
+                    search_result->seg_offsets_[src];
+                if (search_result->group_by_values_.has_value()) {
+                    search_result->group_by_values_.value()[valid_index] =
+                        search_result->group_by_values_.value()[src];
+                }
+                valid_index++;
+            }
+            real_topks[i] = keep;
+        }
+
+        search_result->distances_.resize(valid_index);
+        search_result->seg_offsets_.resize(valid_index);
+        if (search_result->group_by_values_.has_value()) {
+            search_result->group_by_values_.value().resize(valid_index);
+        }
+
+        std::partial_sum(real_topks.begin(),
+                         real_topks.end(),
+                         search_result->topk_per_nq_prefix_sum_.begin() + 1);
+    }
+}
+
+void
+StreamReducerHelper::RefineDistances() {
+    auto& search_info = plan_->plan_node_->search_info_;
+    auto max_slice_topk =
+        *std::max_element(slice_topKs_.begin(), slice_topKs_.end());
+    auto refine_topk = static_cast<int64_t>(
+        std::ceil(search_info.refine_topk_ratio_ * max_slice_topk));
+    if (refine_topk <= max_slice_topk) {
+        return;
+    }
+
+    auto placeholder_group = plan_->placeholder_group_;
+    if (placeholder_group == nullptr || placeholder_group->empty()) {
+        return;
+    }
+    auto& placeholder = placeholder_group->at(0);
+    auto field_id = search_info.field_id_;
+    bool is_cosine = search_info.metric_type_ == knowhere::metric::COSINE;
+    bool is_negated = !PositivelyRelated(search_info.metric_type_);
+    auto& field = plan_->schema_->operator[](field_id);
+    auto is_sparse = field.get_data_type() == DataType::VECTOR_SPARSE_U32_F32;
+    auto dim = is_sparse ? 0 : field.get_dim();
+
+    for (auto& search_result : search_results_to_merge_) {
+        auto segment = static_cast<SegmentInterface*>(search_result->segment_);
+        auto nq = search_result->total_nq_;
+
+        for (int64_t qi = 0; qi < nq; ++qi) {
+            auto nq_begin = search_result->topk_per_nq_prefix_sum_[qi];
+            auto nq_end = search_result->topk_per_nq_prefix_sum_[qi + 1];
+            auto count = nq_end - nq_begin;
+            if (count == 0) {
+                continue;
+            }
+
+            knowhere::DataSetPtr query_dataset;
+            if (is_sparse) {
+                auto sparse_data = static_cast<
+                    const knowhere::sparse::SparseRow<SparseValueType>*>(
+                    placeholder.get_blob());
+                query_dataset = knowhere::GenDataSet(1, 0, sparse_data + qi);
+                query_dataset->SetIsSparse(true);
+            } else {
+                auto element_size = GetDataTypeSize(field.get_data_type(), dim);
+                auto query_ptr =
+                    static_cast<const char*>(placeholder.get_blob()) +
+                    qi * element_size;
+                query_dataset = knowhere::GenDataSet(1, dim, query_ptr);
+            }
+
+            auto* offsets = &search_result->seg_offsets_[nq_begin];
+            std::vector<float> new_distances(count);
+            bool ok = segment->CalcDistByIDs(field_id,
+                                             query_dataset,
+                                             offsets,
+                                             count,
+                                             is_cosine,
+                                             new_distances.data());
+            if (!ok) {
+                continue;
+            }
+
+            if (is_negated) {
+                for (auto& d : new_distances) {
+                    d *= -1;
+                }
+            }
+
+            for (int64_t j = 0; j < count; ++j) {
+                search_result->distances_[nq_begin + j] = new_distances[j];
+            }
+
+            // Re-sort by new distances
+            std::vector<size_t> indices(count);
+            std::iota(indices.begin(), indices.end(), 0);
+            std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
+                return new_distances[a] > new_distances[b];
+            });
+
+            // Apply permutation (primary_keys_ not filled yet)
+            std::vector<float> sorted_distances(count);
+            std::vector<int64_t> sorted_offsets(count);
+            for (int64_t j = 0; j < count; ++j) {
+                sorted_distances[j] =
+                    search_result->distances_[nq_begin + indices[j]];
+                sorted_offsets[j] =
+                    search_result->seg_offsets_[nq_begin + indices[j]];
+            }
+            for (int64_t j = 0; j < count; ++j) {
+                search_result->distances_[nq_begin + j] = sorted_distances[j];
+                search_result->seg_offsets_[nq_begin + j] = sorted_offsets[j];
+            }
+            // Also re-sort group_by_values if present
+            if (search_result->group_by_values_.has_value()) {
+                auto& gbv = search_result->group_by_values_.value();
+                std::vector<GroupByValueType> sorted_gbv(count);
+                for (int64_t j = 0; j < count; ++j) {
+                    sorted_gbv[j] = gbv[nq_begin + indices[j]];
+                }
+                for (int64_t j = 0; j < count; ++j) {
+                    gbv[nq_begin + j] = sorted_gbv[j];
+                }
+            }
+        }
+    }
+}
+
+void
 StreamReducerHelper::MergeReduce() {
     GetTotalStorageCost();
     FilterSearchResults();
+    auto refine_topk_ratio = plan_->plan_node_->search_info_.refine_topk_ratio_;
+    if (refine_topk_ratio > 1.0) {
+        TruncateToRefineTopk();
+        RefineDistances();
+    }
     FillPrimaryKeys();
     InitializeReduceRecords();
     ReduceResultData();

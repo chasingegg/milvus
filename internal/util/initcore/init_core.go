@@ -591,6 +591,32 @@ func SetupCoreConfigChangelCallback() {
 			UpdateExprResCacheCapacityBytes(capacity)
 			return nil
 		})
+
+		paramtable.Get().QueryNodeCfg.SearchTopkRatio.RegisterCallback(func(ctx context.Context, key, oldValue, newValue string) error {
+			ratio, err := strconv.ParseFloat(newValue, 64)
+			if err != nil {
+				return err
+			}
+			if ratio < 1.0 {
+				ratio = 1.0
+			}
+			log.Info("UpdateSearchTopkRatio", zap.Float64("searchTopkRatio", ratio))
+			C.SegcoreSetSearchTopkRatio(C.float(ratio))
+			return nil
+		})
+
+		paramtable.Get().QueryNodeCfg.RefineTopkRatio.RegisterCallback(func(ctx context.Context, key, oldValue, newValue string) error {
+			ratio, err := strconv.ParseFloat(newValue, 64)
+			if err != nil {
+				return err
+			}
+			if ratio < 1.0 {
+				ratio = 1.0
+			}
+			log.Info("UpdateRefineTopkRatio", zap.Float64("refineTopkRatio", ratio))
+			C.SegcoreSetRefineTopkRatio(C.float(ratio))
+			return nil
+		})
 	})
 }
 
@@ -630,7 +656,18 @@ func InitInterminIndexConfig(params *paramtable.ComponentParam) error {
 	denseVecIndexRefineQuantType := C.CString(params.QueryNodeCfg.InterimIndexRefineQuantType.GetValue())
 	defer C.free(unsafe.Pointer(denseVecIndexRefineQuantType))
 	status = C.SegcoreSetDenseVectorInterminIndexRefineQuantType(denseVecIndexRefineQuantType)
-	return HandleCStatus(&status, "InitInterminIndexConfig failed")
+	statErr = HandleCStatus(&status, "InitInterminIndexConfig failed")
+	if statErr != nil {
+		return statErr
+	}
+
+	searchTopkRatio := C.float(params.QueryNodeCfg.SearchTopkRatio.GetAsFloat())
+	C.SegcoreSetSearchTopkRatio(searchTopkRatio)
+
+	refineTopkRatio := C.float(params.QueryNodeCfg.RefineTopkRatio.GetAsFloat())
+	C.SegcoreSetRefineTopkRatio(refineTopkRatio)
+
+	return nil
 }
 
 func InitGeometryCache(params *paramtable.ComponentParam) error {

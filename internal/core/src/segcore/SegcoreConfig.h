@@ -187,6 +187,29 @@ class SegcoreConfig {
     inline static bool refine_with_quant_flag_ = false;
     inline static bool enable_geometry_cache_ = false;
     inline static float interim_index_mem_expansion_rate_ = 1.15f;
+    inline static float search_topk_ratio_ = 1.0f;
+    inline static float refine_topk_ratio_ = 1.0f;
+
+ public:
+    void
+    set_search_topk_ratio(float ratio) {
+        search_topk_ratio_ = ratio;
+    }
+
+    float
+    get_search_topk_ratio() const {
+        return search_topk_ratio_;
+    }
+
+    void
+    set_refine_topk_ratio(float ratio) {
+        refine_topk_ratio_ = ratio;
+    }
+
+    float
+    get_refine_topk_ratio() const {
+        return refine_topk_ratio_;
+    }
 };
 
 }  // namespace milvus::segcore

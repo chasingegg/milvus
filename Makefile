@@ -94,7 +94,7 @@ PROTOC_GEN_GO_GRPC_VERSION := 1.3.0
 PROTOC_GEN_GO_GRPC_OUTPUT := $(shell echo | $(INSTALL_PATH)/protoc-gen-go-grpc  --version 2>/dev/null)
 INSTALL_PROTOC_GEN_GO_GRPC := $(findstring $(PROTOC_GEN_GO_GRPC_VERSION),$(PROTOC_GEN_GO_GRPC_OUTPUT))
 
-index_engine = knowhere
+index_engine = cardinal
 
 # Ensure git works inside containers where .git is owned by a different user.
 # Must use git config --global because git's ownership check runs before

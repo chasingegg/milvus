@@ -12,6 +12,7 @@
 #include "PlanProto.h"
 
 #include <google/protobuf/text_format.h>
+#include "segcore/SegcoreConfig.h"
 
 #include <cstdint>
 #include <memory>
@@ -114,6 +115,20 @@ ProtoParser::PlanNodeFromProto(const planpb::PlanNode& plan_node_proto) {
                     static_cast<milvus::DataType>(query_info_proto.json_type());
             }
             search_info.strict_cast_ = query_info_proto.strict_cast();
+        }
+
+        // Read search_topk_ratio and refine_topk_ratio from SegcoreConfig (YAML config)
+        {
+            auto& segcore_config =
+                milvus::segcore::SegcoreConfig::default_config();
+            auto search_topk_ratio = segcore_config.get_search_topk_ratio();
+            if (search_topk_ratio > 1.0f) {
+                search_info.search_topk_ratio_ = search_topk_ratio;
+            }
+            auto refine_topk_ratio = segcore_config.get_refine_topk_ratio();
+            if (refine_topk_ratio > 1.0f) {
+                search_info.refine_topk_ratio_ = refine_topk_ratio;
+            }
         }
 
         if (query_info_proto.has_search_iterator_v2_info()) {

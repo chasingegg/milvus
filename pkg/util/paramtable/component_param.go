@@ -3320,6 +3320,10 @@ type queryNodeConfig struct {
 	MultipleChunkedEnable         ParamItem `refreshable:"false"` // Deprecated
 	EnableGeometryCache           ParamItem `refreshable:"false"`
 
+	// search topk ratio configs
+	SearchTopkRatio ParamItem `refreshable:"true"`
+	RefineTopkRatio ParamItem `refreshable:"true"`
+
 	// TODO(tiered storage 2) this should be refreshable?
 	TieredWarmupScalarField         ParamItem `refreshable:"false"`
 	TieredWarmupScalarIndex         ParamItem `refreshable:"false"`
@@ -3939,6 +3943,36 @@ This defaults to true, indicating that Milvus creates temporary index for growin
 		Export:       true,
 	}
 	p.EnableGeometryCache.Init(base.mgr)
+
+	p.SearchTopkRatio = ParamItem{
+		Key:     "queryNode.segcore.searchTopkRatio",
+		Version: "2.6.0",
+		Formatter: func(v string) string {
+			if getAsFloat(v) < 1.0 {
+				return "1.0"
+			}
+			return v
+		},
+		DefaultValue: "1.0",
+		Doc:          "search topk ratio, search search_topk_ratio * topk results per segment, should be >= 1.0",
+		Export:       true,
+	}
+	p.SearchTopkRatio.Init(base.mgr)
+
+	p.RefineTopkRatio = ParamItem{
+		Key:     "queryNode.segcore.refineTopkRatio",
+		Version: "2.6.0",
+		Formatter: func(v string) string {
+			if getAsFloat(v) < 1.0 {
+				return "1.0"
+			}
+			return v
+		},
+		DefaultValue: "1.0",
+		Doc:          "refine topk ratio, truncate to refine_topk_ratio * topk per segment and recompute exact distances, should be >= 1.0 and <= search_topk_ratio",
+		Export:       true,
+	}
+	p.RefineTopkRatio.Init(base.mgr)
 
 	p.InterimIndexNProbe = ParamItem{
 		Key:     "queryNode.segcore.interimIndex.nprobe",
