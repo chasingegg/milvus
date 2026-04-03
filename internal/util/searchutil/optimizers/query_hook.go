@@ -26,11 +26,11 @@ type QueryHook interface {
 
 func OptimizeSearchParams(ctx context.Context, req *querypb.SearchRequest, queryHook QueryHook, numSegments int) (*querypb.SearchRequest, error) {
 	// no hook applied or disabled, just return
-	// if queryHook == nil || !paramtable.Get().AutoIndexConfig.Enable.GetAsBool() {
-	// 	req.Req.IsTopkReduce = false
-	// 	req.Req.IsRecallEvaluation = false
-	// 	return req, nil
-	// }
+	if queryHook == nil || !paramtable.Get().AutoIndexConfig.Enable.GetAsBool() {
+		req.Req.IsTopkReduce = false
+		req.Req.IsRecallEvaluation = false
+		return req, nil
+	}
 
 	collectionId := req.GetReq().GetCollectionID()
 	log := log.Ctx(ctx).With(zap.Int64("collection", collectionId))
@@ -76,12 +76,11 @@ func OptimizeSearchParams(ctx context.Context, req *querypb.SearchRequest, query
 		if withFilter && channelNum > 1 {
 			params[common.ChannelNumKey] = channelNum
 		}
-		params[common.TopKKey] = int64(5)
-		// err := queryHook.Run(params)
-		// if err != nil {
-		// 	log.Warn("failed to execute queryHook", zap.Error(err))
-		// 	return nil, merr.WrapErrServiceUnavailable(err.Error(), "queryHook execution failed")
-		// }
+		err := queryHook.Run(params)
+		if err != nil {
+			log.Warn("failed to execute queryHook", zap.Error(err))
+			return nil, merr.WrapErrServiceUnavailable(err.Error(), "queryHook execution failed")
+		}
 		finalTopk := params[common.TopKKey].(int64)
 		isTopkReduce := req.GetReq().GetIsTopkReduce() && (finalTopk < queryInfo.GetTopk())
 		queryInfo.Topk = finalTopk
