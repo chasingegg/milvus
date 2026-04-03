@@ -58,7 +58,7 @@ SearchOnSealedIndex(const Schema& schema,
     // Use effective_topk for the actual search to over-retrieve
     SearchInfo effective_search_info = search_info;
     effective_search_info.topk_ = effective_topk;
-    LOG_INFO("FUCK effective_topk: {}", effective_topk);
+    // LOG_INFO("FUCK effective_topk: {}", effective_topk);
 
     knowhere::DataSetPtr dataset;
     if (query_offsets == nullptr) {

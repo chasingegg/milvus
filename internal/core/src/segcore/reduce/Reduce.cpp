@@ -268,17 +268,17 @@ ReduceHelper::RefineDistances() {
 
             // Log coarse distances before refine
             {
-                std::string coarse_str =
-                    "segment=" + std::to_string(segment->get_segment_id()) +
-                    " qi=" + std::to_string(qi) + " coarse_dist=[";
-                for (int64_t j = 0; j < count; ++j) {
-                    if (j > 0)
-                        coarse_str += ",";
-                    coarse_str +=
-                        std::to_string(search_result->distances_[nq_begin + j]);
-                }
-                coarse_str += "]";
-                LOG_INFO(coarse_str);
+                // std::string coarse_str =
+                //     "segment=" + std::to_string(segment->get_segment_id()) +
+                //     " qi=" + std::to_string(qi) + " coarse_dist=[";
+                // for (int64_t j = 0; j < count; ++j) {
+                //     if (j > 0)
+                //         coarse_str += ",";
+                //     coarse_str +=
+                //         std::to_string(search_result->distances_[nq_begin + j]);
+                // }
+                // coarse_str += "]";
+                // LOG_INFO(coarse_str);
             }
 
             // Call CalcDistByIDs through the segment
@@ -290,9 +290,6 @@ ReduceHelper::RefineDistances() {
                                              is_cosine,
                                              new_distances.data());
             if (!ok) {
-                LOG_INFO("segment={} qi={} CalcDistByIDs failed, skip refine",
-                         segment->get_segment_id(),
-                         qi);
                 continue;
             }
 
@@ -305,16 +302,16 @@ ReduceHelper::RefineDistances() {
 
             // Log refined distances
             {
-                std::string refine_str =
-                    "segment=" + std::to_string(segment->get_segment_id()) +
-                    " qi=" + std::to_string(qi) + " refine_dist=[";
-                for (int64_t j = 0; j < count; ++j) {
-                    if (j > 0)
-                        refine_str += ",";
-                    refine_str += std::to_string(new_distances[j]);
-                }
-                refine_str += "]";
-                LOG_INFO(refine_str);
+                // std::string refine_str =
+                //     "segment=" + std::to_string(segment->get_segment_id()) +
+                //     " qi=" + std::to_string(qi) + " refine_dist=[";
+                // for (int64_t j = 0; j < count; ++j) {
+                //     if (j > 0)
+                //         refine_str += ",";
+                //     refine_str += std::to_string(new_distances[j]);
+                // }
+                // refine_str += "]";
+                // LOG_INFO(refine_str);
             }
 
             // Update distances
@@ -569,10 +566,6 @@ ReduceHelper::ReduceResultData() {
         for (int64_t qi = nq_begin; qi < nq_end; qi++) {
             filtered_count += ReduceSearchResultForOneNQ(
                 qi, slice_topKs_[slice_index], offset);
-            LOG_INFO("FUCK topk: {}, nq: {}, filtered_count: {}",
-                     slice_topKs_[slice_index],
-                     qi,
-                     filtered_count);
         }
     }
     if (filtered_count > 0) {

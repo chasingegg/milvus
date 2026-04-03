@@ -147,7 +147,7 @@ class VectorIndex : public IndexBase {
         // When global reduce with refine is enabled, skip knowhere's internal refine
         // since we do our own refine in the reduce phase via CalcDistByIDs
         if (search_info.refine_topk_ratio_ > 1.0) {
-            search_cfg[knowhere::indexparam::REFINE] = false;
+            search_cfg["skip_refine"] = true;
         }
 
         // save trace context into search conf
