@@ -82,6 +82,13 @@ func OptimizeSearchParams(ctx context.Context, req *querypb.SearchRequest, query
 		if withFilter && channelNum > 1 {
 			params[common.ChannelNumKey] = channelNum
 		}
+		globalRefineEnable := paramtable.Get().AutoIndexConfig.GlobalRefineEnable.GetAsBool()
+		isVector := plan.GetVectorAnns().GetVectorType() < planpb.VectorType_EmbListFloatVector
+		// Disable global refine for group_by and embedding list queries
+		if globalRefineEnable && queryInfo.GetGroupByFieldId() < 0 && isVector {
+			params[common.SearchTopkRatioKey] = paramtable.Get().AutoIndexConfig.GlobalRefineSearchTopkRatio.GetAsFloat()
+			params[common.RefineTopkRatioKey] = paramtable.Get().AutoIndexConfig.GlobalRefineRefineTopkRatio.GetAsFloat()
+		}
 		err := queryHook.Run(params)
 		if err != nil {
 			log.Warn("failed to execute queryHook", zap.Error(err))
@@ -91,6 +98,14 @@ func OptimizeSearchParams(ctx context.Context, req *querypb.SearchRequest, query
 		isTopkReduce := req.GetReq().GetIsTopkReduce() && (finalTopk < queryInfo.GetTopk()) && !isSecondStageSearch
 		queryInfo.Topk = finalTopk
 		queryInfo.SearchParams = params[common.SearchParamKey].(string)
+		// Pass global refine decision to C++ via proto after hook validation
+		if globalRefineVal, ok := params[common.GlobalRefineKey]; ok && globalRefineVal.(bool) {
+			queryInfo.SearchTopkRatio = params[common.SearchTopkRatioKey].(float64)
+			queryInfo.RefineTopkRatio = params[common.RefineTopkRatioKey].(float64)
+		} else {
+			queryInfo.SearchTopkRatio = 0
+			queryInfo.RefineTopkRatio = 0
+		}
 		serializedExprPlan, err := proto.Marshal(&plan)
 		if err != nil {
 			log.Warn("failed to marshal optimized plan", zap.Error(err))
@@ -103,6 +118,7 @@ func OptimizeSearchParams(ctx context.Context, req *querypb.SearchRequest, query
 		} else {
 			req.Req.IsRecallEvaluation = false
 		}
+
 		log.Debug("optimized search params done", zap.Any("queryInfo", queryInfo))
 	default:
 		log.Warn("not supported node type", zap.String("nodeType", fmt.Sprintf("%T", plan.GetNode())))

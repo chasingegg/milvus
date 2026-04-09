@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <memory>
 
 #include "ArrayOffsets.h"
@@ -49,10 +50,18 @@ struct SearchInfo {
     bool strict_cast_{false};
     std::shared_ptr<const IArrayOffsets> array_offsets_{
         nullptr};  // For element-level search
+    bool global_refine_enable_{false};
+    double search_topk_ratio_{1.0};
+    double refine_topk_ratio_{1.0};
 
     bool
     element_level() const {
         return array_offsets_ != nullptr;
+    }
+
+    int64_t
+    GetEffectiveSearchTopk() const {
+        return static_cast<int64_t>(std::ceil(search_topk_ratio_ * topk_));
     }
 };
 

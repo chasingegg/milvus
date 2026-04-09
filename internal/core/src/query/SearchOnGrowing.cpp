@@ -73,9 +73,10 @@ FloatSegmentIndexSearch(const segcore::SegmentGrowingImpl& segment,
     AssertInfo(IsVectorDataType(field.get_data_type()),
                "[FloatSearch]Field data type isn't VECTOR_FLOAT, "
                "VECTOR_FLOAT16, VECTOR_BFLOAT16 or VECTOR_SPARSE_U32_F32");
+    auto effective_topk = info.GetEffectiveSearchTopk();
     dataset::SearchDataset search_dataset{info.metric_type_,
                                           num_queries,
-                                          info.topk_,
+                                          effective_topk,
                                           info.round_decimal_,
                                           dim,
                                           query_data};
@@ -84,7 +85,10 @@ FloatSegmentIndexSearch(const segcore::SegmentGrowingImpl& segment,
             indexing_record.get_vec_field_indexing(vecfield_id);
 
         auto indexing = field_indexing.get_segment_indexing();
-        SearchInfo search_conf = field_indexing.get_search_params(info);
+        SearchInfo effective_info = info;
+        effective_info.topk_ = effective_topk;
+        SearchInfo search_conf =
+            field_indexing.get_search_params(effective_info);
         auto vec_index = dynamic_cast<index::VectorIndex*>(indexing.get());
         SearchOnIndex(search_dataset,
                       *vec_index,
@@ -120,7 +124,7 @@ SearchOnGrowing(const segcore::SegmentGrowingImpl& segment,
     AssertInfo(IsVectorDataType(data_type),
                "[SearchOnGrowing]Data type isn't vector type");
 
-    auto topk = info.topk_;
+    auto topk = info.GetEffectiveSearchTopk();
     auto metric_type = info.metric_type_;
     auto round_decimal = info.round_decimal_;
 

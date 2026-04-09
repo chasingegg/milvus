@@ -3020,6 +3020,38 @@ ChunkedSegmentSealedImpl::IndexHasRawData(FieldId field_id) const {
     return it->second;
 }
 
+bool
+ChunkedSegmentSealedImpl::CalcDistByIDs(
+    FieldId field_id,
+    const knowhere::DataSetPtr& query_dataset,
+    const int64_t* seg_offsets,
+    size_t count,
+    bool is_cosine,
+    float* distances) const {
+    if (!vector_indexings_.is_ready(field_id)) {
+        return false;
+    }
+    auto field_indexing = vector_indexings_.get_field_indexing(field_id);
+    auto accessor =
+        SemiInlineGet(field_indexing->indexing_->PinCells(nullptr, {0}));
+    auto vec_index =
+        dynamic_cast<index::VectorIndex*>(accessor->get_cell_of(0));
+    if (vec_index == nullptr) {
+        return false;
+    }
+    auto res = vec_index->CalcDistByIDs(
+        query_dataset, BitsetView(), seg_offsets, count, is_cosine, nullptr);
+    if (!res.has_value()) {
+        return false;
+    }
+    auto result_distances = res.value()->GetDistance();
+    if (result_distances == nullptr) {
+        return false;
+    }
+    std::memcpy(distances, result_distances, count * sizeof(float));
+    return true;
+}
+
 DataType
 ChunkedSegmentSealedImpl::GetFieldDataType(milvus::FieldId field_id) const {
     auto& field_meta = schema_->operator[](field_id);

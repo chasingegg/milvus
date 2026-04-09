@@ -917,6 +917,18 @@ void VectorMemIndex<T>::LoadFromFile(const Config& config) {
             .count());
 }
 
+template <typename T>
+knowhere::expected<knowhere::DataSetPtr>
+VectorMemIndex<T>::CalcDistByIDs(const knowhere::DataSetPtr query_dataset,
+                                 const BitsetView& bitset,
+                                 const int64_t* labels,
+                                 size_t labels_len,
+                                 bool is_cosine,
+                                 milvus::OpContext* op_context) const {
+    return index_.Node()->CalcDistByIDs(
+        query_dataset, bitset, labels, labels_len, is_cosine, op_context);
+}
+
 template class VectorMemIndex<float>;
 template class VectorMemIndex<bin1>;
 template class VectorMemIndex<float16>;

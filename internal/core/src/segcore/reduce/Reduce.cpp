@@ -24,16 +24,20 @@
 #include <type_traits>
 #include <vector>
 
+#include <numeric>
 #include "NamedType/named_type_impl.hpp"
 #include "common/Consts.h"
 #include "common/EasyAssert.h"
 #include "common/FieldMeta.h"
 #include "common/Schema.h"
 #include "common/Tracer.h"
+#include "common/Utils.h"
 #include "common/protobuf_utils.h"
 #include "fmt/core.h"
 #include "folly/ScopeGuard.h"
 #include "glog/logging.h"
+#include "knowhere/comp/index_param.h"
+#include "knowhere/dataset.h"
 #include "log/Log.h"
 #include "monitor/Monitor.h"
 #include "pb/schema.pb.h"
@@ -80,7 +84,19 @@ ReduceHelper::Initialize() {
 
 void
 ReduceHelper::Reduce() {
-    FillPrimaryKey();
+    auto global_refine_enable =
+        plan_->plan_node_->search_info_.global_refine_enable_;
+    if (global_refine_enable) {
+        // Global reduce with refine: filter → truncate → refine distances → fill PK
+        FilterInvalidSearchResults();
+        TruncateToRefineTopk();
+        RefineDistances();
+        FillPrimaryKey();
+    } else {
+        // Original reduce flow
+        FilterInvalidSearchResults();
+        FillPrimaryKey();
+    }
     SortEqualScoresByPks();
     ReduceResultData();
     RefreshSearchResults();
@@ -158,10 +174,9 @@ ReduceHelper::FilterInvalidSearchResult(SearchResult* search_result) {
 }
 
 void
-ReduceHelper::FillPrimaryKey() {
-    tracer::AutoSpan span("ReduceHelper::FillPrimaryKey",
+ReduceHelper::FilterInvalidSearchResults() {
+    tracer::AutoSpan span("ReduceHelper::FilterInvalidSearchResults",
                           tracer::GetRootSpan());
-    // get primary keys for duplicates removal
     // First pass: filter invalid results and compact the array sequentially
     uint32_t valid_index = 0;
     for (auto& search_result : search_results_) {
@@ -177,7 +192,12 @@ ReduceHelper::FillPrimaryKey() {
     }
     search_results_.resize(valid_index);
     num_segments_ = search_results_.size();
+}
 
+void
+ReduceHelper::FillPrimaryKey() {
+    tracer::AutoSpan span("ReduceHelper::FillPrimaryKey",
+                          tracer::GetRootSpan());
     // Second pass: fill primary keys
     if (num_segments_ > 1) {
         // Parallel execution using MIDDLE thread pool for multiple segments
@@ -210,6 +230,270 @@ ReduceHelper::FillPrimaryKey() {
         auto segment =
             static_cast<SegmentInterface*>(search_results_[0]->segment_);
         segment->FillPrimaryKeys(plan_, *search_results_[0]);
+    }
+}
+
+void
+ReduceHelper::TruncateToRefineTopk() {
+    auto refine_topk_ratio = plan_->plan_node_->search_info_.refine_topk_ratio_;
+    if (search_results_.empty()) {
+        return;
+    }
+
+    auto max_unity_topk = int64_t{0};
+    for (auto& search_result : search_results_) {
+        max_unity_topk = std::max(max_unity_topk, search_result->unity_topK_);
+    }
+
+    bool need_truncate = false;
+    for (int64_t slice_index = 0; slice_index < num_slices_; ++slice_index) {
+        auto refine_topk = static_cast<int64_t>(
+            std::ceil(refine_topk_ratio * slice_topKs_[slice_index]));
+        if (refine_topk < max_unity_topk) {
+            need_truncate = true;
+            break;
+        }
+    }
+    if (!need_truncate) {
+        return;
+    }
+
+    struct ApproxSearchResultCursor {
+        SearchResult* search_result_;
+        int64_t segment_index_;
+        int64_t offset_;
+        int64_t offset_end_;
+        float distance_;
+        int64_t seg_offset_;
+
+        ApproxSearchResultCursor(SearchResult* search_result,
+                                 int64_t segment_index,
+                                 int64_t offset,
+                                 int64_t offset_end)
+            : search_result_(search_result),
+              segment_index_(segment_index),
+              offset_(offset),
+              offset_end_(offset_end),
+              distance_(search_result->distances_[offset]),
+              seg_offset_(search_result->seg_offsets_[offset]) {
+        }
+
+        void
+        advance() {
+            ++offset_;
+            if (offset_ < offset_end_) {
+                distance_ = search_result_->distances_[offset_];
+                seg_offset_ = search_result_->seg_offsets_[offset_];
+            }
+        }
+    };
+
+    struct ApproxSearchResultCursorComparator {
+        bool
+        operator()(const ApproxSearchResultCursor* lhs,
+                   const ApproxSearchResultCursor* rhs) const {
+            if (std::fabs(lhs->distance_ - rhs->distance_) >= EPSILON) {
+                return lhs->distance_ < rhs->distance_;
+            }
+            if (lhs->seg_offset_ != rhs->seg_offset_) {
+                return lhs->seg_offset_ > rhs->seg_offset_;
+            }
+            if (lhs->segment_index_ != rhs->segment_index_) {
+                return lhs->segment_index_ > rhs->segment_index_;
+            }
+            return lhs->offset_ > rhs->offset_;
+        }
+    };
+
+    std::vector<std::vector<int64_t>> kept_offsets(num_segments_);
+    std::vector<std::vector<int64_t>> real_topks(
+        num_segments_, std::vector<int64_t>(total_nq_, 0));
+    std::vector<ApproxSearchResultCursor> cursors;
+    cursors.reserve(num_segments_);
+
+    for (int64_t slice_index = 0; slice_index < num_slices_; ++slice_index) {
+        auto refine_topk = static_cast<int64_t>(
+            std::ceil(refine_topk_ratio * slice_topKs_[slice_index]));
+        auto nq_begin = slice_nqs_prefix_sum_[slice_index];
+        auto nq_end = slice_nqs_prefix_sum_[slice_index + 1];
+
+        for (int64_t qi = nq_begin; qi < nq_end; ++qi) {
+            std::priority_queue<ApproxSearchResultCursor*,
+                                std::vector<ApproxSearchResultCursor*>,
+                                ApproxSearchResultCursorComparator>
+                heap;
+            cursors.clear();
+
+            for (int64_t seg_res_idx = 0; seg_res_idx < num_segments_;
+                 ++seg_res_idx) {
+                auto search_result = search_results_[seg_res_idx];
+                auto offset_begin = search_result->topk_per_nq_prefix_sum_[qi];
+                auto offset_end =
+                    search_result->topk_per_nq_prefix_sum_[qi + 1];
+                if (offset_begin == offset_end) {
+                    continue;
+                }
+                cursors.emplace_back(
+                    search_result, seg_res_idx, offset_begin, offset_end);
+                heap.push(&cursors.back());
+            }
+
+            int64_t selected = 0;
+            while (selected < refine_topk && !heap.empty()) {
+                auto* cursor = heap.top();
+                heap.pop();
+                kept_offsets[cursor->segment_index_].push_back(cursor->offset_);
+                real_topks[cursor->segment_index_][qi]++;
+                ++selected;
+
+                cursor->advance();
+                if (cursor->offset_ < cursor->offset_end_) {
+                    heap.push(cursor);
+                }
+            }
+        }
+    }
+
+    for (int64_t seg_res_idx = 0; seg_res_idx < num_segments_; ++seg_res_idx) {
+        auto* search_result = search_results_[seg_res_idx];
+        size_t valid_index = 0;
+        for (auto src : kept_offsets[seg_res_idx]) {
+            search_result->distances_[valid_index] =
+                search_result->distances_[src];
+            search_result->seg_offsets_[valid_index] =
+                search_result->seg_offsets_[src];
+            if (search_result->element_level_) {
+                search_result->element_indices_[valid_index] =
+                    search_result->element_indices_[src];
+            }
+            ++valid_index;
+        }
+
+        search_result->distances_.resize(valid_index);
+        search_result->seg_offsets_.resize(valid_index);
+        if (search_result->element_level_) {
+            search_result->element_indices_.resize(valid_index);
+        }
+        search_result->topk_per_nq_prefix_sum_.assign(total_nq_ + 1, 0);
+        std::partial_sum(real_topks[seg_res_idx].begin(),
+                         real_topks[seg_res_idx].end(),
+                         search_result->topk_per_nq_prefix_sum_.begin() + 1);
+    }
+}
+
+void
+ReduceHelper::RefineDistances() {
+    auto& search_info = plan_->plan_node_->search_info_;
+
+    // Need placeholder_group to get query vectors
+    auto placeholder_group = plan_->placeholder_group_;
+    if (placeholder_group == nullptr || placeholder_group->empty()) {
+        return;
+    }
+    auto& placeholder = placeholder_group->at(0);
+    auto field_id = search_info.field_id_;
+    bool is_cosine = search_info.metric_type_ == knowhere::metric::COSINE;
+    bool is_negated = !PositivelyRelated(search_info.metric_type_);
+    auto& field = plan_->schema_->operator[](field_id);
+    auto is_sparse = field.get_data_type() == DataType::VECTOR_SPARSE_U32_F32;
+    auto dim = is_sparse ? 0 : field.get_dim();
+    auto element_size =
+        is_sparse ? 0 : milvus::GetDataTypeSize(field.get_data_type(), dim);
+    auto dense_blob = static_cast<const char*>(placeholder.get_blob());
+    auto sparse_blob =
+        is_sparse
+            ? static_cast<const knowhere::sparse::SparseRow<SparseValueType>*>(
+                  placeholder.get_blob())
+            : nullptr;
+
+    for (auto& search_result : search_results_) {
+        auto segment = static_cast<SegmentInterface*>(search_result->segment_);
+        auto nq = search_result->total_nq_;
+        std::vector<float> new_distances;
+        std::vector<size_t> indices;
+
+        for (int64_t qi = 0; qi < nq; ++qi) {
+            auto nq_begin = search_result->topk_per_nq_prefix_sum_[qi];
+            auto nq_end = search_result->topk_per_nq_prefix_sum_[qi + 1];
+            auto count = nq_end - nq_begin;
+            if (count == 0) {
+                continue;
+            }
+
+            // Build query dataset for this single query vector
+            knowhere::DataSetPtr query_dataset;
+            if (is_sparse) {
+                query_dataset = knowhere::GenDataSet(1, 0, sparse_blob + qi);
+                query_dataset->SetIsSparse(true);
+            } else {
+                auto query_ptr = dense_blob + qi * element_size;
+                query_dataset = knowhere::GenDataSet(1, dim, query_ptr);
+            }
+
+            // Collect seg_offsets for this query's candidates
+            auto* offsets = &search_result->seg_offsets_[nq_begin];
+
+            // Call CalcDistByIDs through the segment
+            auto result_count = static_cast<size_t>(count);
+            new_distances.resize(result_count);
+            bool ok = segment->CalcDistByIDs(field_id,
+                                             query_dataset,
+                                             offsets,
+                                             count,
+                                             is_cosine,
+                                             new_distances.data());
+            if (!ok) {
+                continue;
+            }
+
+            // Apply same negation as search phase for L2 metrics
+            if (is_negated) {
+                for (auto& d : new_distances) {
+                    d *= -1;
+                }
+            }
+
+            if (count == 1) {
+                search_result->distances_[nq_begin] = new_distances[0];
+                continue;
+            }
+
+            // Re-sort this query's results by new distances (larger is better for all metrics
+            // since L2 is negated, IP/COSINE are naturally larger-is-better)
+            indices.resize(result_count);
+            std::iota(indices.begin(), indices.end(), 0);
+            std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
+                return new_distances[a] > new_distances[b];
+            });
+
+            // Apply the permutation in place to avoid extra sorted buffers.
+            for (size_t i = 0; i < indices.size();) {
+                auto target = indices[i];
+                if (target == i) {
+                    ++i;
+                    continue;
+                }
+
+                auto temp_distance = new_distances[i];
+                auto temp_offset = offsets[i];
+                auto curr = i;
+                while (indices[curr] != i) {
+                    auto next = indices[curr];
+                    new_distances[curr] = new_distances[next];
+                    offsets[curr] = offsets[next];
+                    indices[curr] = curr;
+                    curr = next;
+                }
+
+                new_distances[curr] = temp_distance;
+                offsets[curr] = temp_offset;
+                indices[curr] = curr;
+            }
+
+            std::copy(new_distances.begin(),
+                      new_distances.end(),
+                      search_result->distances_.begin() + nq_begin);
+        }
     }
 }
 
