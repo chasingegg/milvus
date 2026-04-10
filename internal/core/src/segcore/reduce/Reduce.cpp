@@ -87,7 +87,7 @@ ReduceHelper::Reduce() {
     auto global_refine_enable =
         plan_->plan_node_->search_info_.global_refine_enable_;
     if (global_refine_enable) {
-        // Global reduce with refine: filter → truncate → refine distances → fill PK
+        // Global reduce with refine: filter → truncate → refine → fill PK
         FilterInvalidSearchResults();
         TruncateToRefineTopk();
         RefineDistances();
@@ -258,59 +258,9 @@ ReduceHelper::TruncateToRefineTopk() {
         return;
     }
 
-    struct ApproxSearchResultCursor {
-        SearchResult* search_result_;
-        int64_t segment_index_;
-        int64_t offset_;
-        int64_t offset_end_;
-        float distance_;
-        int64_t seg_offset_;
-
-        ApproxSearchResultCursor(SearchResult* search_result,
-                                 int64_t segment_index,
-                                 int64_t offset,
-                                 int64_t offset_end)
-            : search_result_(search_result),
-              segment_index_(segment_index),
-              offset_(offset),
-              offset_end_(offset_end),
-              distance_(search_result->distances_[offset]),
-              seg_offset_(search_result->seg_offsets_[offset]) {
-        }
-
-        void
-        advance() {
-            ++offset_;
-            if (offset_ < offset_end_) {
-                distance_ = search_result_->distances_[offset_];
-                seg_offset_ = search_result_->seg_offsets_[offset_];
-            }
-        }
-    };
-
-    struct ApproxSearchResultCursorComparator {
-        bool
-        operator()(const ApproxSearchResultCursor* lhs,
-                   const ApproxSearchResultCursor* rhs) const {
-            if (std::fabs(lhs->distance_ - rhs->distance_) >= EPSILON) {
-                return lhs->distance_ < rhs->distance_;
-            }
-            if (lhs->seg_offset_ != rhs->seg_offset_) {
-                return lhs->seg_offset_ > rhs->seg_offset_;
-            }
-            if (lhs->segment_index_ != rhs->segment_index_) {
-                return lhs->segment_index_ > rhs->segment_index_;
-            }
-            return lhs->offset_ > rhs->offset_;
-        }
-    };
-
-    std::vector<std::vector<int64_t>> kept_offsets(num_segments_);
-    std::vector<std::vector<int64_t>> real_topks(
-        num_segments_, std::vector<int64_t>(total_nq_, 0));
-    std::vector<ApproxSearchResultCursor> cursors;
-    cursors.reserve(num_segments_);
-
+    // Use ReduceResultData-style per-slice/per-NQ iteration, with
+    // distance-only merge (no PKs available at this stage).
+    // Record selected offsets in final_search_records_, then compact.
     for (int64_t slice_index = 0; slice_index < num_slices_; ++slice_index) {
         auto refine_topk = static_cast<int64_t>(
             std::ceil(refine_topk_ratio * slice_topKs_[slice_index]));
@@ -318,66 +268,181 @@ ReduceHelper::TruncateToRefineTopk() {
         auto nq_end = slice_nqs_prefix_sum_[slice_index + 1];
 
         for (int64_t qi = nq_begin; qi < nq_end; ++qi) {
-            std::priority_queue<ApproxSearchResultCursor*,
-                                std::vector<ApproxSearchResultCursor*>,
-                                ApproxSearchResultCursorComparator>
-                heap;
-            cursors.clear();
-
-            for (int64_t seg_res_idx = 0; seg_res_idx < num_segments_;
-                 ++seg_res_idx) {
-                auto search_result = search_results_[seg_res_idx];
-                auto offset_begin = search_result->topk_per_nq_prefix_sum_[qi];
-                auto offset_end =
-                    search_result->topk_per_nq_prefix_sum_[qi + 1];
-                if (offset_begin == offset_end) {
-                    continue;
-                }
-                cursors.emplace_back(
-                    search_result, seg_res_idx, offset_begin, offset_end);
-                heap.push(&cursors.back());
-            }
-
-            int64_t selected = 0;
-            while (selected < refine_topk && !heap.empty()) {
-                auto* cursor = heap.top();
-                heap.pop();
-                kept_offsets[cursor->segment_index_].push_back(cursor->offset_);
-                real_topks[cursor->segment_index_][qi]++;
-                ++selected;
-
-                cursor->advance();
-                if (cursor->offset_ < cursor->offset_end_) {
-                    heap.push(cursor);
-                }
-            }
+            TruncateSearchResultForOneNQ(qi, refine_topk);
         }
     }
 
-    for (int64_t seg_res_idx = 0; seg_res_idx < num_segments_; ++seg_res_idx) {
-        auto* search_result = search_results_[seg_res_idx];
-        size_t valid_index = 0;
-        for (auto src : kept_offsets[seg_res_idx]) {
-            search_result->distances_[valid_index] =
-                search_result->distances_[src];
-            search_result->seg_offsets_[valid_index] =
-                search_result->seg_offsets_[src];
-            if (search_result->element_level_) {
-                search_result->element_indices_[valid_index] =
-                    search_result->element_indices_[src];
+    // Compact search results using final_search_records_
+    for (int i = 0; i < num_segments_; i++) {
+        auto search_result = search_results_[i];
+        std::vector<int64_t> real_topks(total_nq_, 0);
+        uint32_t index = 0;
+        for (int j = 0; j < total_nq_; j++) {
+            for (auto offset : final_search_records_[i][j]) {
+                search_result->distances_[index] =
+                    search_result->distances_[offset];
+                search_result->seg_offsets_[index] =
+                    search_result->seg_offsets_[offset];
+                if (search_result->element_level_) {
+                    search_result->element_indices_[index] =
+                        search_result->element_indices_[offset];
+                }
+                index++;
+                real_topks[j]++;
             }
-            ++valid_index;
         }
-
-        search_result->distances_.resize(valid_index);
-        search_result->seg_offsets_.resize(valid_index);
+        search_result->distances_.resize(index);
+        search_result->seg_offsets_.resize(index);
         if (search_result->element_level_) {
-            search_result->element_indices_.resize(valid_index);
+            search_result->element_indices_.resize(index);
         }
         search_result->topk_per_nq_prefix_sum_.assign(total_nq_ + 1, 0);
-        std::partial_sum(real_topks[seg_res_idx].begin(),
-                         real_topks[seg_res_idx].end(),
+        std::partial_sum(real_topks.begin(),
+                         real_topks.end(),
                          search_result->topk_per_nq_prefix_sum_.begin() + 1);
+    }
+    ResetMergeState();
+}
+
+void
+ReduceHelper::TruncateSearchResultForOneNQ(int64_t qi, int64_t topk) {
+    // Lightweight cursor for distance-only merge (no PKs needed)
+    struct Cursor {
+        SearchResult* search_result_;
+        int64_t segment_index_;
+        int64_t offset_;
+        int64_t offset_end_;
+        float distance_;
+
+        bool
+        operator<(const Cursor& rhs) const {
+            if (std::fabs(distance_ - rhs.distance_) >= EPSILON) {
+                return distance_ < rhs.distance_;
+            }
+            return segment_index_ > rhs.segment_index_;
+        }
+    };
+
+    std::priority_queue<Cursor> heap;
+    for (int i = 0; i < num_segments_; i++) {
+        auto search_result = search_results_[i];
+        auto offset_beg = search_result->topk_per_nq_prefix_sum_[qi];
+        auto offset_end = search_result->topk_per_nq_prefix_sum_[qi + 1];
+        if (offset_beg == offset_end) {
+            continue;
+        }
+        heap.push({search_result,
+                   i,
+                   static_cast<int64_t>(offset_beg),
+                   static_cast<int64_t>(offset_end),
+                   search_result->distances_[offset_beg]});
+    }
+
+    int64_t selected = 0;
+    while (selected < topk && !heap.empty()) {
+        auto cursor = heap.top();
+        heap.pop();
+
+        final_search_records_[cursor.segment_index_][qi].push_back(
+            cursor.offset_);
+        ++selected;
+
+        auto next = cursor.offset_ + 1;
+        if (next < cursor.offset_end_) {
+            cursor.offset_ = next;
+            cursor.distance_ = cursor.search_result_->distances_[next];
+            heap.push(cursor);
+        }
+    }
+}
+
+void
+ReduceHelper::ResetMergeState() {
+    for (auto& search_result : search_results_) {
+        search_result->result_offsets_.clear();
+    }
+    for (auto& seg_records : final_search_records_) {
+        for (auto& nq_records : seg_records) {
+            nq_records.clear();
+        }
+    }
+}
+
+void
+ReduceHelper::RefineOneSegment(
+    SearchResult* search_result,
+    FieldId field_id,
+    bool is_cosine,
+    bool is_negated,
+    bool is_sparse,
+    int64_t dim,
+    int64_t element_size,
+    const char* dense_blob,
+    const knowhere::sparse::SparseRow<SparseValueType>* sparse_blob) {
+    auto segment = static_cast<SegmentInterface*>(search_result->segment_);
+    auto nq = search_result->total_nq_;
+    std::vector<size_t> indices;
+    std::vector<float> new_distances;
+    std::vector<float> sorted_distances;
+    std::vector<int64_t> sorted_offsets;
+    for (int64_t qi = 0; qi < nq; ++qi) {
+        auto nq_begin = search_result->topk_per_nq_prefix_sum_[qi];
+        auto nq_end = search_result->topk_per_nq_prefix_sum_[qi + 1];
+        auto count = nq_end - nq_begin;
+        if (count == 0) {
+            continue;
+        }
+
+        knowhere::DataSetPtr query_dataset;
+        if (is_sparse) {
+            query_dataset = knowhere::GenDataSet(1, 0, sparse_blob + qi);
+            query_dataset->SetIsSparse(true);
+        } else {
+            auto query_ptr = dense_blob + qi * element_size;
+            query_dataset = knowhere::GenDataSet(1, dim, query_ptr);
+        }
+
+        auto result_count = static_cast<size_t>(count);
+        auto* offsets = &search_result->seg_offsets_[nq_begin];
+        new_distances.resize(result_count);
+        bool ok = segment->CalcDistByIDs(field_id,
+                                         query_dataset,
+                                         offsets,
+                                         count,
+                                         is_cosine,
+                                         new_distances.data());
+        if (!ok) {
+            continue;
+        }
+
+        if (is_negated) {
+            for (auto& d : new_distances) {
+                d *= -1;
+            }
+        }
+
+        if (count == 1) {
+            search_result->distances_[nq_begin] = new_distances[0];
+            continue;
+        }
+
+        indices.resize(result_count);
+        std::iota(indices.begin(), indices.end(), 0);
+        std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
+            return new_distances[a] > new_distances[b];
+        });
+
+        sorted_distances.resize(result_count);
+        sorted_offsets.resize(result_count);
+        for (size_t i = 0; i < result_count; ++i) {
+            sorted_distances[i] = new_distances[indices[i]];
+            sorted_offsets[i] = offsets[indices[i]];
+        }
+
+        std::copy(sorted_distances.begin(),
+                  sorted_distances.end(),
+                  search_result->distances_.begin() + nq_begin);
+        std::copy(sorted_offsets.begin(), sorted_offsets.end(), offsets);
     }
 }
 
@@ -385,7 +450,6 @@ void
 ReduceHelper::RefineDistances() {
     auto& search_info = plan_->plan_node_->search_info_;
 
-    // Need placeholder_group to get query vectors
     auto placeholder_group = plan_->placeholder_group_;
     if (placeholder_group == nullptr || placeholder_group->empty()) {
         return;
@@ -406,94 +470,57 @@ ReduceHelper::RefineDistances() {
                   placeholder.get_blob())
             : nullptr;
 
-    for (auto& search_result : search_results_) {
-        auto segment = static_cast<SegmentInterface*>(search_result->segment_);
-        auto nq = search_result->total_nq_;
-        std::vector<float> new_distances;
-        std::vector<size_t> indices;
-
-        for (int64_t qi = 0; qi < nq; ++qi) {
-            auto nq_begin = search_result->topk_per_nq_prefix_sum_[qi];
-            auto nq_end = search_result->topk_per_nq_prefix_sum_[qi + 1];
-            auto count = nq_end - nq_begin;
-            if (count == 0) {
-                continue;
-            }
-
-            // Build query dataset for this single query vector
-            knowhere::DataSetPtr query_dataset;
-            if (is_sparse) {
-                query_dataset = knowhere::GenDataSet(1, 0, sparse_blob + qi);
-                query_dataset->SetIsSparse(true);
-            } else {
-                auto query_ptr = dense_blob + qi * element_size;
-                query_dataset = knowhere::GenDataSet(1, dim, query_ptr);
-            }
-
-            // Collect seg_offsets for this query's candidates
-            auto* offsets = &search_result->seg_offsets_[nq_begin];
-
-            // Call CalcDistByIDs through the segment
-            auto result_count = static_cast<size_t>(count);
-            new_distances.resize(result_count);
-            bool ok = segment->CalcDistByIDs(field_id,
-                                             query_dataset,
-                                             offsets,
-                                             count,
-                                             is_cosine,
-                                             new_distances.data());
-            if (!ok) {
-                continue;
-            }
-
-            // Apply same negation as search phase for L2 metrics
-            if (is_negated) {
-                for (auto& d : new_distances) {
-                    d *= -1;
-                }
-            }
-
-            if (count == 1) {
-                search_result->distances_[nq_begin] = new_distances[0];
-                continue;
-            }
-
-            // Re-sort this query's results by new distances (larger is better for all metrics
-            // since L2 is negated, IP/COSINE are naturally larger-is-better)
-            indices.resize(result_count);
-            std::iota(indices.begin(), indices.end(), 0);
-            std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
-                return new_distances[a] > new_distances[b];
+    if (num_segments_ > 1) {
+        auto& pool =
+            ThreadPools::GetThreadPool(milvus::ThreadPoolPriority::MIDDLE);
+        std::vector<std::future<void>> futures;
+        futures.reserve(num_segments_);
+        for (auto& search_result : search_results_) {
+            auto future = pool.Submit([this,
+                                       search_result,
+                                       field_id,
+                                       is_cosine,
+                                       is_negated,
+                                       is_sparse,
+                                       dim,
+                                       element_size,
+                                       dense_blob,
+                                       sparse_blob] {
+                RefineOneSegment(search_result,
+                                 field_id,
+                                 is_cosine,
+                                 is_negated,
+                                 is_sparse,
+                                 dim,
+                                 element_size,
+                                 dense_blob,
+                                 sparse_blob);
             });
-
-            // Apply the permutation in place to avoid extra sorted buffers.
-            for (size_t i = 0; i < indices.size();) {
-                auto target = indices[i];
-                if (target == i) {
-                    ++i;
-                    continue;
-                }
-
-                auto temp_distance = new_distances[i];
-                auto temp_offset = offsets[i];
-                auto curr = i;
-                while (indices[curr] != i) {
-                    auto next = indices[curr];
-                    new_distances[curr] = new_distances[next];
-                    offsets[curr] = offsets[next];
-                    indices[curr] = curr;
-                    curr = next;
-                }
-
-                new_distances[curr] = temp_distance;
-                offsets[curr] = temp_offset;
-                indices[curr] = curr;
-            }
-
-            std::copy(new_distances.begin(),
-                      new_distances.end(),
-                      search_result->distances_.begin() + nq_begin);
+            futures.emplace_back(std::move(future));
         }
+        auto futures_guard = folly::makeGuard([&futures]() {
+            for (auto& f : futures) {
+                if (f.valid()) {
+                    try {
+                        f.get();
+                    } catch (...) {
+                    }
+                }
+            }
+        });
+        for (auto& future : futures) {
+            future.get();
+        }
+    } else if (num_segments_ == 1) {
+        RefineOneSegment(search_results_[0],
+                         field_id,
+                         is_cosine,
+                         is_negated,
+                         is_sparse,
+                         dim,
+                         element_size,
+                         dense_blob,
+                         sparse_blob);
     }
 }
 

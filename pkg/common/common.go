@@ -187,9 +187,9 @@ const (
 	CollectionKey   = "collection"
 	RecallEvalKey   = "recall_eval"
 
-	GlobalRefineKey     = "global_refine"
-	SearchTopkRatioKey  = "search_topk_ratio"
-	RefineTopkRatioKey  = "refine_topk_ratio"
+	GlobalRefineKey    = "global_refine"
+	SearchTopkRatioKey = "search_topk_ratio"
+	RefineTopkRatioKey = "refine_topk_ratio"
 
 	ParamsKey      = "params"
 	IndexTypeKey   = "index_type"

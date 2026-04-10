@@ -22,7 +22,9 @@
 
 #include "common/QueryResult.h"
 #include "common/Tracer.h"
+#include "common/TypeTraits.h"
 #include "common/Types.h"
+#include "knowhere/dataset.h"
 #include "pb/schema.pb.h"
 #include "query/PlanImpl.h"
 #include "segcore/ReduceStructure.h"
@@ -84,7 +86,25 @@ class ReduceHelper {
     TruncateToRefineTopk();
 
     void
+    TruncateSearchResultForOneNQ(int64_t qi, int64_t topk);
+
+    void
+    ResetMergeState();
+
+    void
     RefineDistances();
+
+    void
+    RefineOneSegment(
+        SearchResult* search_result,
+        FieldId field_id,
+        bool is_cosine,
+        bool is_negated,
+        bool is_sparse,
+        int64_t dim,
+        int64_t element_size,
+        const char* dense_blob,
+        const knowhere::sparse::SparseRow<SparseValueType>* sparse_blob);
 
     void
     ReduceResultData();
