@@ -97,10 +97,10 @@ SearchOnSealedIndex(const Schema& schema,
     // Only over-retrieve when global refine is enabled AND index has raw data
     // for refine. Single-layer quant indexes without raw data cannot benefit
     // from refine, so use the original topk.
-    auto effective_topk =
-        (search_info.global_refine_enable_ && vec_index->HasRawData())
-            ? search_info.GetEffectiveSearchTopk()
-            : search_info.topk_;
+    auto effective_topk = (search_info.global_refine_enable_ &&
+                           vec_index != nullptr && vec_index->HasRawData())
+                              ? search_info.GetEffectiveSearchTopk()
+                              : search_info.topk_;
 
     // Use effective_topk for the actual search to over-retrieve
     SearchInfo effective_search_info = search_info;
@@ -131,15 +131,18 @@ SearchOnSealedIndex(const Schema& schema,
     }
 
     bool use_iterator =
-        milvus::exec::PrepareVectorIteratorsFromIndex(search_info,
+        milvus::exec::PrepareVectorIteratorsFromIndex(effective_search_info,
                                                       num_queries,
                                                       dataset,
                                                       search_result,
                                                       search_bitset,
                                                       *vec_index);
     if (!use_iterator) {
-        vec_index->Query(
-            dataset, search_info, search_bitset, op_context, search_result);
+        vec_index->Query(dataset,
+                         effective_search_info,
+                         search_bitset,
+                         op_context,
+                         search_result);
         float* distances = search_result.distances_.data();
         auto total_num = num_queries * effective_topk;
         if (round_decimal != -1) {

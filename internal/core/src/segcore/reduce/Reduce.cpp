@@ -450,11 +450,10 @@ void
 ReduceHelper::RefineDistances() {
     auto& search_info = plan_->plan_node_->search_info_;
 
-    auto placeholder_group = plan_->placeholder_group_;
-    if (placeholder_group == nullptr || placeholder_group->empty()) {
+    if (placeholder_group_ == nullptr || placeholder_group_->empty()) {
         return;
     }
-    auto& placeholder = placeholder_group->at(0);
+    auto& placeholder = placeholder_group_->at(0);
     auto field_id = search_info.field_id_;
     bool is_cosine = search_info.metric_type_ == knowhere::metric::COSINE;
     bool is_negated = !PositivelyRelated(search_info.metric_type_);

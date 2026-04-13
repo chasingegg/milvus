@@ -120,6 +120,7 @@ TEST(CApiTest, ReduceNullResult) {
         status = ReduceSearchResultsAndFillData({},
                                                 &cSearchResultData,
                                                 plan,
+                                                placeholderGroup,
                                                 results.data(),
                                                 results.size(),
                                                 slice_nqs.data(),
@@ -214,6 +215,7 @@ TEST(CApiTest, ReduceRemoveDuplicates) {
         status = ReduceSearchResultsAndFillData({},
                                                 &cSearchResultData,
                                                 plan,
+                                                placeholderGroup,
                                                 results.data(),
                                                 results.size(),
                                                 slice_nqs.data(),
@@ -251,6 +253,7 @@ TEST(CApiTest, ReduceRemoveDuplicates) {
         status = ReduceSearchResultsAndFillData({},
                                                 &cSearchResultData,
                                                 plan,
+                                                placeholderGroup,
                                                 results.data(),
                                                 results.size(),
                                                 slice_nqs.data(),
@@ -361,6 +364,7 @@ testReduceSearchWithExpr(int N,
     status = ReduceSearchResultsAndFillData({},
                                             &cSearchResultData,
                                             plan,
+                                            placeholderGroup,
                                             results.data(),
                                             results.size(),
                                             slice_nqs.data(),
@@ -616,6 +620,7 @@ runSearchReduceWithGlobalRefine(int N,
     status = ReduceSearchResultsAndFillData({},
                                             &cSearchResultData,
                                             plan,
+                                            placeholderGroup,
                                             results.data(),
                                             results.size(),
                                             slice_nqs.data(),
@@ -678,6 +683,25 @@ TEST(CApiTest, ReduceWithGlobalRefine) {
     }
 }
 
+TEST(CApiTest, ReduceWithGlobalRefineUsesExplicitPlaceholderGroup) {
+    int N = 1000;
+    int topK = 10;
+    int num_queries = 4;
+
+    auto result = runSearchReduceWithGlobalRefine<milvus::FloatVector>(
+        N, topK, num_queries, 2.0f, 1.5f);
+    ASSERT_EQ(result.num_queries(), num_queries);
+    ASSERT_EQ(result.top_k(), topK);
+    for (auto real_topk : result.topks()) {
+        ASSERT_GT(real_topk, 0);
+        ASSERT_LE(real_topk, topK);
+    }
+    for (int i = 0; i < result.scores_size(); i++) {
+        ASSERT_FALSE(std::isnan(result.scores(i)));
+        ASSERT_FALSE(std::isinf(result.scores(i)));
+    }
+}
+
 TEST(CApiTest, GlobalRefineTruncateMergesBeforeSegmentPruning) {
     auto schema = std::make_shared<Schema>();
     query::Plan plan(schema);
@@ -702,7 +726,7 @@ TEST(CApiTest, GlobalRefineTruncateMergesBeforeSegmentPruning) {
     int64_t slice_nqs[] = {1};
     int64_t slice_topks[] = {2};
     TestReduceHelper helper(
-        search_results, &plan, slice_nqs, slice_topks, 1, nullptr);
+        search_results, &plan, nullptr, slice_nqs, slice_topks, 1, nullptr);
 
     helper.TruncateForTest();
 
@@ -849,6 +873,7 @@ TEST(CApiTest, ReduceWithGlobalRefineFilterAll) {
     status = ReduceSearchResultsAndFillData({},
                                             &cSearchResultData,
                                             plan,
+                                            placeholderGroup,
                                             results.data(),
                                             results.size(),
                                             slice_nqs.data(),

@@ -583,7 +583,7 @@ VectorDiskAnnIndex<T>::CalcDistByIDs(const knowhere::DataSetPtr query_dataset,
                                      size_t labels_len,
                                      bool is_cosine,
                                      milvus::OpContext* op_context) const {
-    return index_.Node()->CalcDistByIDs(
+    return index_.CalcDistByIDs(
         query_dataset, bitset, labels, labels_len, is_cosine, op_context);
 }
 

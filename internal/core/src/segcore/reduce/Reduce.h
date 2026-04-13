@@ -39,14 +39,17 @@ struct SearchResultDataBlobs {
 
 class ReduceHelper {
  public:
-    explicit ReduceHelper(std::vector<SearchResult*>& search_results,
-                          milvus::query::Plan* plan,
-                          int64_t* slice_nqs,
-                          int64_t* slice_topKs,
-                          int64_t slice_num,
-                          tracer::TraceContext* trace_ctx)
+    explicit ReduceHelper(
+        std::vector<SearchResult*>& search_results,
+        milvus::query::Plan* plan,
+        const milvus::query::PlaceholderGroup* placeholder_group,
+        int64_t* slice_nqs,
+        int64_t* slice_topKs,
+        int64_t slice_num,
+        tracer::TraceContext* trace_ctx)
         : search_results_(search_results),
           plan_(plan),
+          placeholder_group_(placeholder_group),
           slice_nqs_(slice_nqs, slice_nqs + slice_num),
           slice_topKs_(slice_topKs, slice_topKs + slice_num),
           trace_ctx_(trace_ctx) {
@@ -146,6 +149,7 @@ class ReduceHelper {
  protected:
     std::vector<SearchResult*>& search_results_;
     milvus::query::Plan* plan_;
+    const milvus::query::PlaceholderGroup* placeholder_group_;
     int64_t num_slices_;
     std::vector<int64_t> slice_nqs_prefix_sum_;
     int64_t num_segments_;
