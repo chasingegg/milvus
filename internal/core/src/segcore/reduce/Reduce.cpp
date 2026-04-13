@@ -405,6 +405,13 @@ ReduceHelper::RefineOneSegment(
     auto nq = search_result->total_nq_;
     std::vector<size_t> indices;
     std::vector<float> new_distances;
+    auto query_dataset = std::make_shared<knowhere::DataSet>();
+    query_dataset->SetRows(1);
+    query_dataset->SetDim(is_sparse ? 0 : dim);
+    query_dataset->SetTensorBeginId(0);
+    if (is_sparse) {
+        query_dataset->SetIsSparse(true);
+    }
     for (int64_t qi = 0; qi < nq; ++qi) {
         auto nq_begin = search_result->topk_per_nq_prefix_sum_[qi];
         auto nq_end = search_result->topk_per_nq_prefix_sum_[qi + 1];
@@ -413,13 +420,11 @@ ReduceHelper::RefineOneSegment(
             continue;
         }
 
-        knowhere::DataSetPtr query_dataset;
         if (is_sparse) {
-            query_dataset = knowhere::GenDataSet(1, 0, sparse_blob + qi);
-            query_dataset->SetIsSparse(true);
+            query_dataset->SetTensor(sparse_blob + qi);
         } else {
             auto query_ptr = dense_blob + qi * element_size;
-            query_dataset = knowhere::GenDataSet(1, dim, query_ptr);
+            query_dataset->SetTensor(query_ptr);
         }
 
         auto result_count = static_cast<size_t>(count);
@@ -543,36 +548,43 @@ void
 ReduceHelper::ApplyRefinedOrderForOneNQ(
     SearchResult* search_result,
     size_t nq_begin,
-    const std::vector<size_t>& indices,
+    std::vector<size_t>& indices,
     const std::vector<float>& new_distances) {
-    auto result_count = indices.size();
-    std::vector<float> sorted_distances(result_count);
-    std::vector<int64_t> sorted_offsets(result_count);
-    std::vector<int32_t> sorted_element_indices;
-    if (search_result->element_level_) {
-        sorted_element_indices.resize(result_count);
-    }
-
     auto* offsets = &search_result->seg_offsets_[nq_begin];
     auto* element_indices = search_result->element_level_
                                 ? &search_result->element_indices_[nq_begin]
                                 : nullptr;
-    for (size_t i = 0; i < result_count; ++i) {
-        sorted_distances[i] = new_distances[indices[i]];
-        sorted_offsets[i] = offsets[indices[i]];
-        if (search_result->element_level_) {
-            sorted_element_indices[i] = element_indices[indices[i]];
+    auto* distances = search_result->distances_.data() + nq_begin;
+    for (size_t i = 0; i < indices.size();) {
+        size_t target = indices[i];
+        if (target == i) {
+            ++i;
+            continue;
         }
-    }
 
-    std::copy(sorted_distances.begin(),
-              sorted_distances.end(),
-              search_result->distances_.begin() + nq_begin);
-    std::copy(sorted_offsets.begin(), sorted_offsets.end(), offsets);
-    if (search_result->element_level_) {
-        std::copy(sorted_element_indices.begin(),
-                  sorted_element_indices.end(),
-                  element_indices);
+        float temp_distance = new_distances[i];
+        int64_t temp_offset = offsets[i];
+        int32_t temp_elem_idx =
+            search_result->element_level_ ? element_indices[i] : -1;
+
+        size_t curr = i;
+        while (indices[curr] != i) {
+            size_t next = indices[curr];
+            distances[curr] = new_distances[next];
+            offsets[curr] = offsets[next];
+            if (search_result->element_level_) {
+                element_indices[curr] = element_indices[next];
+            }
+            indices[curr] = curr;
+            curr = next;
+        }
+
+        distances[curr] = temp_distance;
+        offsets[curr] = temp_offset;
+        if (search_result->element_level_) {
+            element_indices[curr] = temp_elem_idx;
+        }
+        indices[curr] = curr;
     }
 }
 

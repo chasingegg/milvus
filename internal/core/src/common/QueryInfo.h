@@ -51,8 +51,8 @@ struct SearchInfo {
     std::shared_ptr<const IArrayOffsets> array_offsets_{
         nullptr};  // For element-level search
     bool global_refine_enable_{false};
-    double search_topk_ratio_{1.0};
-    double refine_topk_ratio_{1.0};
+    float search_topk_ratio_{1.0f};
+    float refine_topk_ratio_{1.0f};
 
     bool
     element_level() const {

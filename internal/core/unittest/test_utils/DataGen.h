@@ -1999,8 +1999,8 @@ class ScopedSchemaHandle {
                 int64_t round_decimal = -1,
                 const std::string& hints = "",
                 bool materialized_view_involved = false,
-                double search_topk_ratio = 0,
-                double refine_topk_ratio = 0) const {
+                float search_topk_ratio = 0,
+                float refine_topk_ratio = 0) const {
         // Build QueryInfo protobuf
         milvus::proto::plan::QueryInfo query_info;
         query_info.set_topk(topk);

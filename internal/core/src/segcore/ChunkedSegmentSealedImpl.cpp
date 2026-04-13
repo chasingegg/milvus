@@ -1304,6 +1304,10 @@ ChunkedSegmentSealedImpl::vector_search(SearchInfo& search_info,
         milvus::tracer::AddEvent(
             "finish_searching_vector_temperate_binlog_index");
     } else if (get_bit(index_ready_bitset_, field_id)) {
+        if (search_info.global_refine_enable_ &&
+            IsIndexRefineEnabled(field_id)) {
+            search_info.topk_ = search_info.GetEffectiveSearchTopk();
+        }
         AssertInfo(vector_indexings_.is_ready(field_id),
                    "vector indexes isn't ready for field " +
                        std::to_string(field_id.get()));

@@ -74,8 +74,9 @@ class TestReduceHelper : public ReduceHelper {
                              size_t nq_begin,
                              const std::vector<size_t>& indices,
                              const std::vector<float>& new_distances) {
+        auto reorder_indices = indices;
         ApplyRefinedOrderForOneNQ(
-            search_result, nq_begin, indices, new_distances);
+            search_result, nq_begin, reorder_indices, new_distances);
     }
 
     void

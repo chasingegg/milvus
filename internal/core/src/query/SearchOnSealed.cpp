@@ -93,19 +93,7 @@ SearchOnSealedIndex(const Schema& schema,
         SemiInlineGet(field_indexing->indexing_->PinCells(nullptr, {0}));
     auto vec_index =
         dynamic_cast<index::VectorIndex*>(accessor->get_cell_of(0));
-
-    // Only over-retrieve when global refine is enabled AND the index can
-    // support refine. Single-layer quant indexes without raw data cannot
-    // benefit from refine, so use the original topk.
-    auto effective_topk =
-        (search_info.global_refine_enable_ && vec_index != nullptr &&
-         vec_index->IsIndexRefineEnabled())
-            ? search_info.GetEffectiveSearchTopk()
-            : search_info.topk_;
-
-    // Use effective_topk for the actual search to over-retrieve
-    SearchInfo effective_search_info = search_info;
-    effective_search_info.topk_ = effective_topk;
+    auto topk = search_info.topk_;
 
     const auto& offset_mapping = vec_index->GetOffsetMapping();
     TargetBitmap transformed_bitset;
@@ -114,11 +102,11 @@ SearchOnSealedIndex(const Schema& schema,
         transformed_bitset = TransformBitset(bitset, offset_mapping);
         search_bitset = BitsetView(transformed_bitset);
         if (offset_mapping.GetValidCount() == 0) {
-            auto total_num = num_queries * effective_topk;
+            auto total_num = num_queries * topk;
             search_result.seg_offsets_.resize(total_num, INVALID_SEG_OFFSET);
             search_result.distances_.resize(total_num, 0.0f);
             search_result.total_nq_ = num_queries;
-            search_result.unity_topK_ = effective_topk;
+            search_result.unity_topK_ = topk;
             return;
         }
     }
@@ -132,20 +120,17 @@ SearchOnSealedIndex(const Schema& schema,
     }
 
     bool use_iterator =
-        milvus::exec::PrepareVectorIteratorsFromIndex(effective_search_info,
+        milvus::exec::PrepareVectorIteratorsFromIndex(search_info,
                                                       num_queries,
                                                       dataset,
                                                       search_result,
                                                       search_bitset,
                                                       *vec_index);
     if (!use_iterator) {
-        vec_index->Query(dataset,
-                         effective_search_info,
-                         search_bitset,
-                         op_context,
-                         search_result);
+        vec_index->Query(
+            dataset, search_info, search_bitset, op_context, search_result);
         float* distances = search_result.distances_.data();
-        auto total_num = num_queries * effective_topk;
+        auto total_num = num_queries * topk;
         if (round_decimal != -1) {
             const float multiplier = pow(10.0, round_decimal);
             for (int i = 0; i < total_num; i++) {
@@ -178,7 +163,7 @@ SearchOnSealedIndex(const Schema& schema,
     }
     TransformOffset(search_result.seg_offsets_, offset_mapping);
     search_result.total_nq_ = num_queries;
-    search_result.unity_topK_ = effective_topk;
+    search_result.unity_topK_ = topk;
 }
 
 void

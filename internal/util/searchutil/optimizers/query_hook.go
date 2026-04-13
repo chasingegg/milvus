@@ -86,8 +86,8 @@ func OptimizeSearchParams(ctx context.Context, req *querypb.SearchRequest, query
 		isVector := plan.GetVectorAnns().GetVectorType() < planpb.VectorType_EmbListFloatVector
 		// Disable global refine for group_by and embedding list queries
 		if globalRefineEnable && queryInfo.GetGroupByFieldId() < 0 && isVector {
-			params[common.SearchTopkRatioKey] = paramtable.Get().AutoIndexConfig.GlobalRefineSearchTopkRatio.GetAsFloat()
-			params[common.RefineTopkRatioKey] = paramtable.Get().AutoIndexConfig.GlobalRefineRefineTopkRatio.GetAsFloat()
+			params[common.SearchTopkRatioKey] = float32(paramtable.Get().AutoIndexConfig.GlobalRefineSearchTopkRatio.GetAsFloat())
+			params[common.RefineTopkRatioKey] = float32(paramtable.Get().AutoIndexConfig.GlobalRefineRefineTopkRatio.GetAsFloat())
 		}
 		err := queryHook.Run(params)
 		if err != nil {
@@ -100,8 +100,8 @@ func OptimizeSearchParams(ctx context.Context, req *querypb.SearchRequest, query
 		queryInfo.SearchParams = params[common.SearchParamKey].(string)
 		// Pass global refine decision to C++ via proto after hook validation
 		if globalRefineVal, ok := params[common.GlobalRefineKey]; ok && globalRefineVal.(bool) {
-			queryInfo.SearchTopkRatio = params[common.SearchTopkRatioKey].(float64)
-			queryInfo.RefineTopkRatio = params[common.RefineTopkRatioKey].(float64)
+			queryInfo.SearchTopkRatio = params[common.SearchTopkRatioKey].(float32)
+			queryInfo.RefineTopkRatio = params[common.RefineTopkRatioKey].(float32)
 		} else {
 			queryInfo.SearchTopkRatio = 0
 			queryInfo.RefineTopkRatio = 0

@@ -118,7 +118,7 @@ class ReduceHelper {
     void
     ApplyRefinedOrderForOneNQ(SearchResult* search_result,
                               size_t nq_begin,
-                              const std::vector<size_t>& indices,
+                              std::vector<size_t>& indices,
                               const std::vector<float>& new_distances);
 
     void
