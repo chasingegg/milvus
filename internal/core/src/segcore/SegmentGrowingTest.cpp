@@ -1015,54 +1015,6 @@ TEST(GrowingTest, SearchVectorArray) {
     std::cout << sr_parsed.dump(1) << std::endl;
 }
 
-TEST(Growing, SearchBruteForceUsesOriginalTopkWhenGlobalRefineEnabled) {
-    auto dim = 8;
-    auto schema = std::make_shared<Schema>();
-    auto pk = schema->AddDebugField("pk", DataType::INT64);
-    auto vec = schema->AddDebugField(
-        "vec", DataType::VECTOR_FLOAT, dim, knowhere::metric::L2);
-    schema->set_primary_field_id(pk);
-
-    auto segment = CreateGrowingSegment(schema, empty_index_meta);
-
-    auto dataset = DataGen(schema, 128);
-    auto offset = segment->PreInsert(128);
-    segment->Insert(offset,
-                    128,
-                    dataset.row_ids_.data(),
-                    dataset.timestamps_.data(),
-                    dataset.raw_);
-
-    milvus::segcore::ScopedSchemaHandle schema_handle(*schema);
-    auto plan_str = schema_handle.ParseSearch("",
-                                              "vec",
-                                              5,
-                                              knowhere::metric::L2,
-                                              R"({"nprobe": 10})",
-                                              3,
-                                              "",
-                                              false,
-                                              3.0,
-                                              2.0);
-    auto plan =
-        CreateSearchPlanByExpr(schema, plan_str.data(), plan_str.size());
-    ASSERT_NE(plan, nullptr);
-
-    auto query_data = generate_float_vector(1, dim);
-    auto ph_group_raw =
-        CreatePlaceholderGroupFromBlob(1, dim, query_data.data());
-    auto ph_group =
-        ParsePlaceholderGroup(plan.get(), ph_group_raw.SerializeAsString());
-    ASSERT_NE(ph_group, nullptr);
-
-    auto search_result =
-        segment->Search(plan.get(), ph_group.get(), dataset.timestamps_[127]);
-
-    ASSERT_EQ(search_result->unity_topK_, 5);
-    ASSERT_EQ(search_result->seg_offsets_.size(), 5);
-    ASSERT_EQ(search_result->distances_.size(), 5);
-}
-
 TEST(Growing, TestMaskWithTTLField) {
     auto schema = std::make_shared<Schema>();
     auto pk_fid = schema->AddDebugField("pk", DataType::INT64, false);

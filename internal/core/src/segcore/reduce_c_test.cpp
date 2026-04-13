@@ -887,7 +887,12 @@ TEST(CApiTest, GlobalRefineRequiresPlaceholderGroup) {
     helper_with_disabled_segment.SetSearchResultRefineEnabledForTest(false);
     EXPECT_FALSE(helper_with_disabled_segment.CanUseGlobalRefineForTest());
 
-    SearchResult seg1 = seg0;
+    SearchResult seg1;
+    seg1.total_nq_ = seg0.total_nq_;
+    seg1.unity_topK_ = seg0.unity_topK_;
+    seg1.distances_ = seg0.distances_;
+    seg1.seg_offsets_ = seg0.seg_offsets_;
+    seg1.topk_per_nq_prefix_sum_ = seg0.topk_per_nq_prefix_sum_;
     std::vector<SearchResult*> mixed_search_results{&seg0, &seg1};
     int64_t mixed_slice_nqs[] = {1, 1};
     int64_t mixed_slice_topks[] = {1, 1};
