@@ -86,7 +86,7 @@ void
 ReduceHelper::Reduce() {
     auto global_refine_enable =
         plan_->plan_node_->search_info_.global_refine_enable_;
-    if (global_refine_enable) {
+    if (global_refine_enable && CanUseGlobalRefine()) {
         // Global reduce with refine: filter → truncate → refine → fill PK
         FilterInvalidSearchResults();
         TruncateToRefineTopk();
@@ -102,6 +102,28 @@ ReduceHelper::Reduce() {
     RefreshSearchResults();
     FillEntryData();
     GetTotalStorageCost();
+}
+
+bool
+ReduceHelper::CanUseGlobalRefine() const {
+    if (placeholder_group_ == nullptr || placeholder_group_->empty()) {
+        return false;
+    }
+    return std::any_of(search_results_.begin(),
+                       search_results_.end(),
+                       [this](SearchResult* search_result) {
+                           return IsSearchResultRefineEnabled(search_result);
+                       });
+}
+
+bool
+ReduceHelper::IsSearchResultRefineEnabled(SearchResult* search_result) const {
+    if (search_result == nullptr || search_result->segment_ == nullptr) {
+        return false;
+    }
+    auto segment = static_cast<SegmentInterface*>(search_result->segment_);
+    return segment->IsIndexRefineEnabled(
+        plan_->plan_node_->search_info_.field_id_);
 }
 
 void
@@ -383,8 +405,6 @@ ReduceHelper::RefineOneSegment(
     auto nq = search_result->total_nq_;
     std::vector<size_t> indices;
     std::vector<float> new_distances;
-    std::vector<float> sorted_distances;
-    std::vector<int64_t> sorted_offsets;
     for (int64_t qi = 0; qi < nq; ++qi) {
         auto nq_begin = search_result->topk_per_nq_prefix_sum_[qi];
         auto nq_end = search_result->topk_per_nq_prefix_sum_[qi + 1];
@@ -431,18 +451,10 @@ ReduceHelper::RefineOneSegment(
         std::sort(indices.begin(), indices.end(), [&](size_t a, size_t b) {
             return new_distances[a] > new_distances[b];
         });
-
-        sorted_distances.resize(result_count);
-        sorted_offsets.resize(result_count);
-        for (size_t i = 0; i < result_count; ++i) {
-            sorted_distances[i] = new_distances[indices[i]];
-            sorted_offsets[i] = offsets[indices[i]];
-        }
-
-        std::copy(sorted_distances.begin(),
-                  sorted_distances.end(),
-                  search_result->distances_.begin() + nq_begin);
-        std::copy(sorted_offsets.begin(), sorted_offsets.end(), offsets);
+        ApplyRefinedOrderForOneNQ(search_result,
+                                  static_cast<size_t>(nq_begin),
+                                  indices,
+                                  new_distances);
     }
 }
 
@@ -475,6 +487,9 @@ ReduceHelper::RefineDistances() {
         std::vector<std::future<void>> futures;
         futures.reserve(num_segments_);
         for (auto& search_result : search_results_) {
+            if (!IsSearchResultRefineEnabled(search_result)) {
+                continue;
+            }
             auto future = pool.Submit([this,
                                        search_result,
                                        field_id,
@@ -510,7 +525,8 @@ ReduceHelper::RefineDistances() {
         for (auto& future : futures) {
             future.get();
         }
-    } else if (num_segments_ == 1) {
+    } else if (num_segments_ == 1 &&
+               IsSearchResultRefineEnabled(search_results_[0])) {
         RefineOneSegment(search_results_[0],
                          field_id,
                          is_cosine,
@@ -520,6 +536,43 @@ ReduceHelper::RefineDistances() {
                          element_size,
                          dense_blob,
                          sparse_blob);
+    }
+}
+
+void
+ReduceHelper::ApplyRefinedOrderForOneNQ(
+    SearchResult* search_result,
+    size_t nq_begin,
+    const std::vector<size_t>& indices,
+    const std::vector<float>& new_distances) {
+    auto result_count = indices.size();
+    std::vector<float> sorted_distances(result_count);
+    std::vector<int64_t> sorted_offsets(result_count);
+    std::vector<int32_t> sorted_element_indices;
+    if (search_result->element_level_) {
+        sorted_element_indices.resize(result_count);
+    }
+
+    auto* offsets = &search_result->seg_offsets_[nq_begin];
+    auto* element_indices = search_result->element_level_
+                                ? &search_result->element_indices_[nq_begin]
+                                : nullptr;
+    for (size_t i = 0; i < result_count; ++i) {
+        sorted_distances[i] = new_distances[indices[i]];
+        sorted_offsets[i] = offsets[indices[i]];
+        if (search_result->element_level_) {
+            sorted_element_indices[i] = element_indices[indices[i]];
+        }
+    }
+
+    std::copy(sorted_distances.begin(),
+              sorted_distances.end(),
+              search_result->distances_.begin() + nq_begin);
+    std::copy(sorted_offsets.begin(), sorted_offsets.end(), offsets);
+    if (search_result->element_level_) {
+        std::copy(sorted_element_indices.begin(),
+                  sorted_element_indices.end(),
+                  element_indices);
     }
 }
 

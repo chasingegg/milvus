@@ -97,6 +97,12 @@ class ReduceHelper {
     void
     RefineDistances();
 
+    bool
+    CanUseGlobalRefine() const;
+
+    virtual bool
+    IsSearchResultRefineEnabled(SearchResult* search_result) const;
+
     void
     RefineOneSegment(
         SearchResult* search_result,
@@ -108,6 +114,12 @@ class ReduceHelper {
         int64_t element_size,
         const char* dense_blob,
         const knowhere::sparse::SparseRow<SparseValueType>* sparse_blob);
+
+    void
+    ApplyRefinedOrderForOneNQ(SearchResult* search_result,
+                              size_t nq_begin,
+                              const std::vector<size_t>& indices,
+                              const std::vector<float>& new_distances);
 
     void
     ReduceResultData();

@@ -81,6 +81,9 @@ class VectorIndex : public IndexBase {
     virtual const bool
     HasRawData() const override = 0;
 
+    virtual bool
+    IsIndexRefineEnabled() const = 0;
+
     virtual knowhere::expected<knowhere::DataSetPtr>
     CalcDistByIDs(const knowhere::DataSetPtr query_dataset,
                   const BitsetView& bitset,

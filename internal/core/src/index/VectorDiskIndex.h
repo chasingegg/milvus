@@ -79,6 +79,9 @@ class VectorDiskAnnIndex : public VectorIndex {
     const bool
     HasRawData() const override;
 
+    bool
+    IsIndexRefineEnabled() const override;
+
     std::vector<uint8_t>
     GetVector(const DatasetPtr dataset) const override;
 

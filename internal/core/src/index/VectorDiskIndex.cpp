@@ -495,6 +495,12 @@ VectorDiskAnnIndex<T>::HasRawData() const {
 }
 
 template <typename T>
+bool
+VectorDiskAnnIndex<T>::IsIndexRefineEnabled() const {
+    return index_.IsIndexRefineEnabled();
+}
+
+template <typename T>
 std::vector<uint8_t>
 VectorDiskAnnIndex<T>::GetVector(const DatasetPtr dataset) const {
     auto index_type = GetIndexType();

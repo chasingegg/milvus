@@ -646,6 +646,12 @@ VectorMemIndex<T>::HasRawData() const {
 }
 
 template <typename T>
+bool
+VectorMemIndex<T>::IsIndexRefineEnabled() const {
+    return index_.IsIndexRefineEnabled();
+}
+
+template <typename T>
 std::vector<uint8_t>
 VectorMemIndex<T>::GetVector(const DatasetPtr dataset) const {
     auto index_type = GetIndexType();

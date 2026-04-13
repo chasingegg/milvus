@@ -94,13 +94,14 @@ SearchOnSealedIndex(const Schema& schema,
     auto vec_index =
         dynamic_cast<index::VectorIndex*>(accessor->get_cell_of(0));
 
-    // Only over-retrieve when global refine is enabled AND index has raw data
-    // for refine. Single-layer quant indexes without raw data cannot benefit
-    // from refine, so use the original topk.
-    auto effective_topk = (search_info.global_refine_enable_ &&
-                           vec_index != nullptr && vec_index->HasRawData())
-                              ? search_info.GetEffectiveSearchTopk()
-                              : search_info.topk_;
+    // Only over-retrieve when global refine is enabled AND the index can
+    // support refine. Single-layer quant indexes without raw data cannot
+    // benefit from refine, so use the original topk.
+    auto effective_topk =
+        (search_info.global_refine_enable_ && vec_index != nullptr &&
+         vec_index->IsIndexRefineEnabled())
+            ? search_info.GetEffectiveSearchTopk()
+            : search_info.topk_;
 
     // Use effective_topk for the actual search to over-retrieve
     SearchInfo effective_search_info = search_info;
@@ -201,10 +202,10 @@ SearchOnSealedColumn(const Schema& schema,
     auto dim =
         data_type == DataType::VECTOR_SPARSE_U32_F32 ? 0 : field.get_dim();
 
-    auto effective_topk = search_info.GetEffectiveSearchTopk();
+    auto topk = search_info.topk_;
     query::dataset::SearchDataset query_dataset{search_info.metric_type_,
                                                 num_queries,
-                                                effective_topk,
+                                                topk,
                                                 search_info.round_decimal_,
                                                 dim,
                                                 query_data,
@@ -251,7 +252,7 @@ SearchOnSealedColumn(const Schema& schema,
     auto num_chunk = column->num_chunks();
 
     SubSearchResult final_qr(num_queries,
-                             effective_topk,
+                             topk,
                              search_info.metric_type_,
                              search_info.round_decimal_);
 
@@ -346,7 +347,7 @@ SearchOnSealedColumn(const Schema& schema,
             TransformOffset(result.seg_offsets_, offset_mapping);
         }
     }
-    result.unity_topK_ = effective_topk;
+    result.unity_topK_ = topk;
     result.total_nq_ = query_dataset.num_queries;
 }
 

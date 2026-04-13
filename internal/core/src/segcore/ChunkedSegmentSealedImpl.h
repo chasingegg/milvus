@@ -176,6 +176,9 @@ class ChunkedSegmentSealedImpl : public SegmentSealed {
                   bool is_cosine,
                   float* distances) const override;
 
+    bool
+    IsIndexRefineEnabled(FieldId field_id) const override;
+
     DataType
     GetFieldDataType(FieldId fieldId) const override;
 

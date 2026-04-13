@@ -257,6 +257,11 @@ class SegmentInterface {
         return false;
     }
 
+    virtual bool
+    IsIndexRefineEnabled(FieldId field_id) const {
+        return false;
+    }
+
     virtual void
     LazyCheckSchema(SchemaPtr sch) = 0;
 

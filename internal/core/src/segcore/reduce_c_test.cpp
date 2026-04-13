@@ -11,10 +11,13 @@
 
 #include <gtest/gtest.h>
 #include <stddef.h>
+#include <cstdlib>
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "common/EasyAssert.h"
@@ -46,12 +49,65 @@ namespace {
 
 class TestReduceHelper : public ReduceHelper {
  public:
+    using ReduceHelper::ApplyRefinedOrderForOneNQ;
+    using ReduceHelper::CanUseGlobalRefine;
+    using ReduceHelper::IsSearchResultRefineEnabled;
     using ReduceHelper::ReduceHelper;
 
     void
     TruncateForTest() {
         TruncateToRefineTopk();
     }
+
+    bool
+    CanUseGlobalRefineForTest() const {
+        return CanUseGlobalRefine();
+    }
+
+    void
+    RefineDistancesForTest() {
+        RefineDistances();
+    }
+
+    void
+    ApplyRefinedOrderForTest(SearchResult* search_result,
+                             size_t nq_begin,
+                             const std::vector<size_t>& indices,
+                             const std::vector<float>& new_distances) {
+        ApplyRefinedOrderForOneNQ(
+            search_result, nq_begin, indices, new_distances);
+    }
+
+    void
+    SetSearchResultRefineEnabledForTest(bool enabled) {
+        search_result_refine_enabled_for_test_ = enabled;
+    }
+
+    void
+    SetSearchResultRefineEnabledForTest(SearchResult* search_result,
+                                        bool enabled) {
+        search_result_refine_enabled_by_result_for_test_[search_result] =
+            enabled;
+    }
+
+ protected:
+    bool
+    IsSearchResultRefineEnabled(SearchResult* search_result) const override {
+        auto it = search_result_refine_enabled_by_result_for_test_.find(
+            search_result);
+        if (it != search_result_refine_enabled_by_result_for_test_.end()) {
+            return it->second;
+        }
+        if (search_result_refine_enabled_for_test_.has_value()) {
+            return search_result_refine_enabled_for_test_.value();
+        }
+        return ReduceHelper::IsSearchResultRefineEnabled(search_result);
+    }
+
+ private:
+    std::optional<bool> search_result_refine_enabled_for_test_;
+    std::unordered_map<SearchResult*, bool>
+        search_result_refine_enabled_by_result_for_test_;
 };
 
 }  // namespace
@@ -739,6 +795,195 @@ TEST(CApiTest, GlobalRefineTruncateMergesBeforeSegmentPruning) {
     ASSERT_TRUE(seg1.distances_.empty());
     ASSERT_TRUE(seg1.seg_offsets_.empty());
     EXPECT_EQ(seg1.topk_per_nq_prefix_sum_, std::vector<size_t>({0, 0}));
+}
+
+TEST(CApiTest, GlobalRefineTruncateHandlesMixedSegmentUnityTopk) {
+    auto schema = std::make_shared<Schema>();
+    query::Plan plan(schema);
+    plan.plan_node_ = std::make_unique<query::VectorPlanNode>();
+    plan.plan_node_->search_info_.refine_topk_ratio_ = 1.0;
+
+    SearchResult seg0;
+    seg0.total_nq_ = 1;
+    seg0.unity_topK_ = 3;
+    seg0.distances_ = {0.99f, 0.95f, 0.90f};
+    seg0.seg_offsets_ = {100, 101, 102};
+    seg0.topk_per_nq_prefix_sum_ = {0, 3};
+
+    SearchResult seg1;
+    seg1.total_nq_ = 1;
+    seg1.unity_topK_ = 1;
+    seg1.distances_ = {0.98f};
+    seg1.seg_offsets_ = {200};
+    seg1.topk_per_nq_prefix_sum_ = {0, 1};
+
+    std::vector<SearchResult*> search_results{&seg0, &seg1};
+    int64_t slice_nqs[] = {1};
+    int64_t slice_topks[] = {2};
+    TestReduceHelper helper(
+        search_results, &plan, nullptr, slice_nqs, slice_topks, 1, nullptr);
+
+    helper.TruncateForTest();
+
+    ASSERT_EQ(seg0.distances_.size(), 1);
+    ASSERT_EQ(seg0.seg_offsets_.size(), 1);
+    EXPECT_FLOAT_EQ(seg0.distances_[0], 0.99f);
+    EXPECT_EQ(seg0.seg_offsets_[0], 100);
+    EXPECT_EQ(seg0.topk_per_nq_prefix_sum_, std::vector<size_t>({0, 1}));
+
+    ASSERT_EQ(seg1.distances_.size(), 1);
+    ASSERT_EQ(seg1.seg_offsets_.size(), 1);
+    EXPECT_FLOAT_EQ(seg1.distances_[0], 0.98f);
+    EXPECT_EQ(seg1.seg_offsets_[0], 200);
+    EXPECT_EQ(seg1.topk_per_nq_prefix_sum_, std::vector<size_t>({0, 1}));
+}
+
+TEST(CApiTest, GlobalRefineRequiresPlaceholderGroup) {
+    auto schema = std::make_shared<Schema>();
+    query::Plan plan(schema);
+    plan.plan_node_ = std::make_unique<query::VectorPlanNode>();
+    plan.plan_node_->search_info_.global_refine_enable_ = true;
+
+    SearchResult seg0;
+    seg0.total_nq_ = 1;
+    seg0.unity_topK_ = 1;
+    seg0.distances_ = {0.95f};
+    seg0.seg_offsets_ = {100};
+    seg0.topk_per_nq_prefix_sum_ = {0, 1};
+
+    std::vector<SearchResult*> search_results{&seg0};
+    int64_t slice_nqs[] = {1};
+    int64_t slice_topks[] = {1};
+
+    TestReduceHelper helper_without_placeholder(
+        search_results, &plan, nullptr, slice_nqs, slice_topks, 1, nullptr);
+    helper_without_placeholder.SetSearchResultRefineEnabledForTest(true);
+    EXPECT_FALSE(helper_without_placeholder.CanUseGlobalRefineForTest());
+
+    query::Placeholder placeholder;
+    placeholder.num_of_queries_ = 1;
+    placeholder.blob_.resize(sizeof(float), 0);
+    query::PlaceholderGroup placeholder_group;
+    placeholder_group.push_back(std::move(placeholder));
+
+    TestReduceHelper helper_with_placeholder(search_results,
+                                             &plan,
+                                             &placeholder_group,
+                                             slice_nqs,
+                                             slice_topks,
+                                             1,
+                                             nullptr);
+    helper_with_placeholder.SetSearchResultRefineEnabledForTest(true);
+    EXPECT_TRUE(helper_with_placeholder.CanUseGlobalRefineForTest());
+
+    TestReduceHelper helper_with_disabled_segment(search_results,
+                                                  &plan,
+                                                  &placeholder_group,
+                                                  slice_nqs,
+                                                  slice_topks,
+                                                  1,
+                                                  nullptr);
+    helper_with_disabled_segment.SetSearchResultRefineEnabledForTest(false);
+    EXPECT_FALSE(helper_with_disabled_segment.CanUseGlobalRefineForTest());
+
+    SearchResult seg1 = seg0;
+    std::vector<SearchResult*> mixed_search_results{&seg0, &seg1};
+    int64_t mixed_slice_nqs[] = {1, 1};
+    int64_t mixed_slice_topks[] = {1, 1};
+    TestReduceHelper helper_with_mixed_segments(mixed_search_results,
+                                                &plan,
+                                                &placeholder_group,
+                                                mixed_slice_nqs,
+                                                mixed_slice_topks,
+                                                2,
+                                                nullptr);
+    helper_with_mixed_segments.SetSearchResultRefineEnabledForTest(&seg0,
+                                                                   false);
+    helper_with_mixed_segments.SetSearchResultRefineEnabledForTest(&seg1, true);
+    EXPECT_TRUE(helper_with_mixed_segments.CanUseGlobalRefineForTest());
+}
+
+TEST(CApiTest, GlobalRefineSkipsDisabledSegmentsDuringRefine) {
+    auto schema = std::make_shared<Schema>();
+    auto field_id =
+        schema->AddDebugField("fakevec", DataType::VECTOR_FLOAT, 4, "L2");
+
+    query::Plan plan(schema);
+    plan.plan_node_ = std::make_unique<query::VectorPlanNode>();
+    plan.plan_node_->search_info_.field_id_ = field_id;
+    plan.plan_node_->search_info_.metric_type_ = knowhere::metric::L2;
+    plan.plan_node_->search_info_.global_refine_enable_ = true;
+
+    query::Placeholder placeholder;
+    placeholder.num_of_queries_ = 1;
+    placeholder.blob_.resize(sizeof(float) * 4, 0);
+    query::PlaceholderGroup placeholder_group;
+    placeholder_group.push_back(std::move(placeholder));
+
+    SearchResult enabled_segment;
+    enabled_segment.total_nq_ = 1;
+    enabled_segment.unity_topK_ = 0;
+    enabled_segment.topk_per_nq_prefix_sum_ = {0, 0};
+
+    SearchResult disabled_segment;
+    disabled_segment.total_nq_ = 1;
+    disabled_segment.unity_topK_ = 1;
+    disabled_segment.seg_offsets_ = {0};
+    disabled_segment.distances_ = {0.5f};
+    disabled_segment.topk_per_nq_prefix_sum_ = {0, 1};
+
+    std::vector<SearchResult*> search_results{&enabled_segment,
+                                              &disabled_segment};
+    int64_t slice_nqs[] = {1};
+    int64_t slice_topks[] = {1};
+
+    EXPECT_EXIT(
+        {
+            TestReduceHelper helper(search_results,
+                                    &plan,
+                                    &placeholder_group,
+                                    slice_nqs,
+                                    slice_topks,
+                                    1,
+                                    nullptr);
+            helper.SetSearchResultRefineEnabledForTest(&enabled_segment, true);
+            helper.SetSearchResultRefineEnabledForTest(&disabled_segment,
+                                                       false);
+            helper.RefineDistancesForTest();
+            std::_Exit(0);
+        },
+        ::testing::ExitedWithCode(0),
+        "");
+}
+
+TEST(CApiTest, RefineReorderKeepsElementIndicesAligned) {
+    auto schema = std::make_shared<Schema>();
+    query::Plan plan(schema);
+    plan.plan_node_ = std::make_unique<query::VectorPlanNode>();
+
+    SearchResult seg0;
+    seg0.total_nq_ = 1;
+    seg0.unity_topK_ = 3;
+    seg0.element_level_ = true;
+    seg0.distances_ = {0.1f, 0.2f, 0.3f};
+    seg0.seg_offsets_ = {10, 11, 12};
+    seg0.element_indices_ = {100, 101, 102};
+    seg0.topk_per_nq_prefix_sum_ = {0, 3};
+
+    std::vector<SearchResult*> search_results{&seg0};
+    int64_t slice_nqs[] = {1};
+    int64_t slice_topks[] = {3};
+
+    TestReduceHelper helper(
+        search_results, &plan, nullptr, slice_nqs, slice_topks, 1, nullptr);
+
+    std::vector<size_t> indices = {1, 2, 0};
+    std::vector<float> new_distances = {5.0f, 9.0f, 7.0f};
+    helper.ApplyRefinedOrderForTest(&seg0, 0, indices, new_distances);
+
+    EXPECT_EQ(seg0.distances_, std::vector<float>({9.0f, 7.0f, 5.0f}));
+    EXPECT_EQ(seg0.seg_offsets_, std::vector<int64_t>({11, 12, 10}));
+    EXPECT_EQ(seg0.element_indices_, std::vector<int32_t>({101, 102, 100}));
 }
 
 TEST(CApiTest, ReduceWithGlobalRefineHighRatio) {
