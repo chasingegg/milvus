@@ -894,14 +894,14 @@ TEST(CApiTest, GlobalRefineRequiresPlaceholderGroup) {
     seg1.seg_offsets_ = seg0.seg_offsets_;
     seg1.topk_per_nq_prefix_sum_ = seg0.topk_per_nq_prefix_sum_;
     std::vector<SearchResult*> mixed_search_results{&seg0, &seg1};
-    int64_t mixed_slice_nqs[] = {1, 1};
-    int64_t mixed_slice_topks[] = {1, 1};
+    int64_t mixed_slice_nqs[] = {1};
+    int64_t mixed_slice_topks[] = {1};
     TestReduceHelper helper_with_mixed_segments(mixed_search_results,
                                                 &plan,
                                                 &placeholder_group,
                                                 mixed_slice_nqs,
                                                 mixed_slice_topks,
-                                                2,
+                                                1,
                                                 nullptr);
     helper_with_mixed_segments.SetSearchResultRefineEnabledForTest(&seg0,
                                                                    false);
