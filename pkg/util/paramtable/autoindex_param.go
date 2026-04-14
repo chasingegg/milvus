@@ -69,6 +69,7 @@ type AutoIndexConfig struct {
 	TwoStageSearchMinNumSegments ParamItem `refreshable:"true"`
 	// global refine
 	GlobalRefineEnable          ParamItem `refreshable:"true"`
+	GlobalRefineMinDimThreshold ParamItem `refreshable:"true"`
 	GlobalRefineSearchTopkRatio ParamItem `refreshable:"true"`
 	GlobalRefineRefineTopkRatio ParamItem `refreshable:"true"`
 }
@@ -311,10 +312,19 @@ func (p *AutoIndexConfig) init(base *BaseTable) {
 	}
 	p.GlobalRefineEnable.Init(base.mgr)
 
+	p.GlobalRefineMinDimThreshold = ParamItem{
+		Key:          "autoIndex.globalRefine.minDimThreshold",
+		Version:      "3.0.0",
+		DefaultValue: "256",
+		Doc:          "minimum dimension threshold for global refine, if dim < minDimThreshold, disable global refine",
+		Export:       true,
+	}
+	p.GlobalRefineMinDimThreshold.Init(base.mgr)
+
 	p.GlobalRefineSearchTopkRatio = ParamItem{
 		Key:          "autoIndex.globalRefine.searchTopkRatio",
 		Version:      "3.0.0",
-		DefaultValue: "1.0",
+		DefaultValue: "0",
 		Doc:          "search topk ratio for global refine, search search_topk_ratio * topk results per segment, should be >= 1.0",
 		Export:       true,
 	}
@@ -323,7 +333,7 @@ func (p *AutoIndexConfig) init(base *BaseTable) {
 	p.GlobalRefineRefineTopkRatio = ParamItem{
 		Key:          "autoIndex.globalRefine.refineTopkRatio",
 		Version:      "3.0.0",
-		DefaultValue: "1.0",
+		DefaultValue: "0",
 		Doc:          "refine topk ratio for global refine, truncate to refine_topk_ratio * topk per segment and recompute exact distances, should be >= 1.0 and <= searchTopkRatio",
 		Export:       true,
 	}

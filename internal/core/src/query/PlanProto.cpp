@@ -150,6 +150,18 @@ ProtoParser::ParseSearchInfo(const planpb::VectorANNS& anns_proto) {
     {
         auto search_topk_ratio = query_info_proto.search_topk_ratio();
         auto refine_topk_ratio = query_info_proto.refine_topk_ratio();
+        if (search_topk_ratio > 0 && search_topk_ratio < 1.0f) {
+            ThrowInfo(ConfigInvalid,
+                      "search_topk_ratio for global refine must be >= 1.0, but "
+                      "got {}",
+                      search_topk_ratio);
+        }
+        if (refine_topk_ratio > 0 && refine_topk_ratio < 1.0f) {
+            ThrowInfo(ConfigInvalid,
+                      "refine_topk_ratio for global refine must be >= 1.0, but "
+                      "got {}",
+                      refine_topk_ratio);
+        }
         bool global_refine_enable =
             search_topk_ratio > 0 && refine_topk_ratio > 0;
         search_info.global_refine_enable_ = global_refine_enable;

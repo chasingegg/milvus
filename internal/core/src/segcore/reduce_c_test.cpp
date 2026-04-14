@@ -787,11 +787,15 @@ TEST(CApiTest, GlobalRefineTruncateMergesBeforeSegmentPruning) {
 
     helper.TruncateForTest();
 
-    ASSERT_EQ(seg0.distances_.size(), 1);
-    ASSERT_EQ(seg0.seg_offsets_.size(), 1);
+    // refine_topk = max(ceil(0.5 * 2), max_unity_topk=2) = 2
+    // merge top-2 across segments: seg0 keeps both (0.95, 0.94), seg1 gets none
+    ASSERT_EQ(seg0.distances_.size(), 2);
+    ASSERT_EQ(seg0.seg_offsets_.size(), 2);
     EXPECT_FLOAT_EQ(seg0.distances_[0], 0.95f);
+    EXPECT_FLOAT_EQ(seg0.distances_[1], 0.94f);
     EXPECT_EQ(seg0.seg_offsets_[0], 100);
-    EXPECT_EQ(seg0.topk_per_nq_prefix_sum_, std::vector<size_t>({0, 1}));
+    EXPECT_EQ(seg0.seg_offsets_[1], 101);
+    EXPECT_EQ(seg0.topk_per_nq_prefix_sum_, std::vector<size_t>({0, 2}));
 
     ASSERT_TRUE(seg1.distances_.empty());
     ASSERT_TRUE(seg1.seg_offsets_.empty());
@@ -826,11 +830,15 @@ TEST(CApiTest, GlobalRefineTruncateHandlesMixedSegmentUnityTopk) {
 
     helper.TruncateForTest();
 
-    ASSERT_EQ(seg0.distances_.size(), 1);
-    ASSERT_EQ(seg0.seg_offsets_.size(), 1);
+    // refine_topk = max(ceil(1.0 * 2), max_unity_topk=3) = 3
+    // merge top-3 across segments: 0.99(seg0), 0.98(seg1), 0.95(seg0)
+    ASSERT_EQ(seg0.distances_.size(), 2);
+    ASSERT_EQ(seg0.seg_offsets_.size(), 2);
     EXPECT_FLOAT_EQ(seg0.distances_[0], 0.99f);
+    EXPECT_FLOAT_EQ(seg0.distances_[1], 0.95f);
     EXPECT_EQ(seg0.seg_offsets_[0], 100);
-    EXPECT_EQ(seg0.topk_per_nq_prefix_sum_, std::vector<size_t>({0, 1}));
+    EXPECT_EQ(seg0.seg_offsets_[1], 101);
+    EXPECT_EQ(seg0.topk_per_nq_prefix_sum_, std::vector<size_t>({0, 2}));
 
     ASSERT_EQ(seg1.distances_.size(), 1);
     ASSERT_EQ(seg1.seg_offsets_.size(), 1);

@@ -271,10 +271,10 @@ ReduceHelper::TruncateToRefineTopk() {
     // distance-only merge (no PKs available at this stage).
     // Record selected offsets in final_search_records_, then compact.
     for (int64_t slice_index = 0; slice_index < num_slices_; ++slice_index) {
-        auto refine_topk = std::max(
-            static_cast<int64_t>(
-                std::ceil(refine_topk_ratio * slice_topKs_[slice_index])),
-            max_unity_topk);
+        auto refine_topk =
+            std::max(static_cast<int64_t>(std::ceil(refine_topk_ratio *
+                                                    slice_topKs_[slice_index])),
+                     max_unity_topk);
         auto nq_begin = slice_nqs_prefix_sum_[slice_index];
         auto nq_end = slice_nqs_prefix_sum_[slice_index + 1];
 
@@ -426,6 +426,14 @@ ReduceHelper::RefineOneSegment(
                                          is_cosine,
                                          new_distances.data());
         if (!ok) {
+            LOG_WARN(
+                "failed to refine distances by ids, keep approximate "
+                "distances, segment_id={}, field_id={}, nq_idx={}, "
+                "candidate_count={}",
+                segment->get_segment_id(),
+                field_id.get(),
+                qi,
+                count);
             continue;
         }
 
