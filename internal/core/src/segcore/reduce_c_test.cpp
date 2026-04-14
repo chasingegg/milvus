@@ -548,6 +548,7 @@ TEST(CApiTest, ReduceRefreshClearsUnselectedSegments) {
     status = ReduceSearchResultsAndFillData({},
                                             &cSearchResultData,
                                             plan,
+                                            placeholderGroup,
                                             results.data(),
                                             results.size(),
                                             slice_nqs.data(),
@@ -951,23 +952,17 @@ TEST(CApiTest, GlobalRefineSkipsDisabledSegmentsDuringRefine) {
     int64_t slice_nqs[] = {1};
     int64_t slice_topks[] = {1};
 
-    EXPECT_EXIT(
-        {
-            TestReduceHelper helper(search_results,
-                                    &plan,
-                                    &placeholder_group,
-                                    slice_nqs,
-                                    slice_topks,
-                                    1,
-                                    nullptr);
-            helper.SetSearchResultRefineEnabledForTest(&enabled_segment, true);
-            helper.SetSearchResultRefineEnabledForTest(&disabled_segment,
-                                                       false);
-            helper.RefineDistancesForTest();
-            std::_Exit(0);
-        },
-        ::testing::ExitedWithCode(0),
-        "");
+    TestReduceHelper helper(search_results,
+                             &plan,
+                             &placeholder_group,
+                             slice_nqs,
+                             slice_topks,
+                             1,
+                             nullptr);
+    helper.SetSearchResultRefineEnabledForTest(&enabled_segment, true);
+    helper.SetSearchResultRefineEnabledForTest(&disabled_segment, false);
+    // Should not crash — disabled segment is skipped during refine.
+    helper.RefineDistancesForTest();
 }
 
 TEST(CApiTest, RefineReorderKeepsElementIndicesAligned) {
