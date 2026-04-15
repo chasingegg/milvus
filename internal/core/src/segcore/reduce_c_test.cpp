@@ -21,14 +21,17 @@
 #include <vector>
 
 #include "common/EasyAssert.h"
+#include "common/IndexMeta.h"
 #include "common/QueryResult.h"
 #include "common/Types.h"
 #include "common/VectorTrait.h"
 #include "common/protobuf_utils.h"
 #include "filemanager/InputStream.h"
 #include "gtest/gtest.h"
+#include "knowhere/comp/index_param.h"
 #include "pb/plan.pb.h"
 #include "pb/schema.pb.h"
+#include "segcore/ChunkedSegmentSealedImpl.h"
 #include "segcore/Collection.h"
 #include "segcore/ReduceStructure.h"
 #include "segcore/collection_c.h"
@@ -704,6 +707,117 @@ runSearchReduceWithGlobalRefine(int N,
     return result_data;
 }
 
+milvus::proto::schema::SearchResultData
+runSearchReduceWithForcedSealedRefine(int N,
+                                      int topK,
+                                      int num_queries,
+                                      float search_topk_ratio,
+                                      float refine_topk_ratio) {
+    auto collection =
+        NewCollection(get_default_schema_config<milvus::FloatVector>().c_str());
+    auto schema = ((Collection*)collection)->get_schema();
+    auto dataset = DataGen(schema, N);
+
+    ScopedSchemaHandle schema_handle(*schema);
+    auto blob = generate_query_data<milvus::FloatVector>(num_queries);
+
+    void* plan = nullptr;
+    auto binary_plan = schema_handle.ParseSearch("",
+                                                 "fakevec",
+                                                 topK,
+                                                 "L2",
+                                                 R"({"nprobe": 10})",
+                                                 -1,
+                                                 "",
+                                                 false,
+                                                 search_topk_ratio,
+                                                 refine_topk_ratio);
+    auto status = CreateSearchPlanByExpr(
+        collection, binary_plan.data(), binary_plan.size(), &plan);
+    EXPECT_EQ(status.error_code, Success);
+
+    void* placeholderGroup = nullptr;
+    status = ParsePlaceholderGroup(
+        plan, blob.data(), blob.length(), &placeholderGroup);
+    EXPECT_EQ(status.error_code, Success);
+
+    std::map<std::string, std::string> index_params = {
+        {"index_type", knowhere::IndexEnum::INDEX_FAISS_IVFFLAT},
+        {"metric_type", knowhere::metric::L2},
+        {"nlist", "64"}};
+    std::map<std::string, std::string> type_params = {
+        {"dim", std::to_string(DIM)}};
+    FieldIndexMeta field_index_meta(
+        FieldId(100), std::move(index_params), std::move(type_params));
+    std::map<FieldId, FieldIndexMeta> field_map = {
+        {FieldId(100), std::move(field_index_meta)}};
+    auto collection_index_meta =
+        std::make_shared<CollectionIndexMeta>(226985, std::move(field_map));
+
+    auto segcore_config = SegcoreConfig::default_config();
+    segcore_config.set_enable_interim_segment_index(true);
+    segcore_config.set_dense_vector_intermin_index_type(
+        knowhere::IndexEnum::INDEX_FAISS_SCANN_DVR);
+    segcore_config.set_nlist(16);
+    segcore_config.set_chunk_rows(1024);
+
+    auto segment =
+        CreateSealedSegment(schema, collection_index_meta, 0, segcore_config);
+    auto cm = milvus::storage::RemoteChunkManagerSingleton::GetInstance()
+                  .GetRemoteChunkManager();
+    auto load_info = PrepareInsertBinlog(
+        kCollectionID, kPartitionID, kSegmentID, dataset, cm);
+    status = LoadFieldData(segment.get(), &load_info);
+    EXPECT_EQ(status.error_code, Success);
+    EXPECT_TRUE(segment->HasIndex(FieldId(100)));
+
+    CSearchResult res;
+    status =
+        CSearch(segment.get(), plan, placeholderGroup, MAX_TIMESTAMP, &res);
+    EXPECT_EQ(status.error_code, Success);
+
+    auto* search_result = reinterpret_cast<SearchResult*>(res);
+    EXPECT_EQ(search_result->total_nq_, num_queries);
+    EXPECT_GE(search_result->unity_topK_, topK);
+
+    std::vector<SearchResult*> search_results{search_result};
+    auto slice_nqs = std::vector<int64_t>{num_queries};
+    auto slice_topKs = std::vector<int64_t>{topK};
+    auto* plan_ptr = static_cast<milvus::query::Plan*>(plan);
+    auto* placeholder_group_ptr =
+        static_cast<const milvus::query::PlaceholderGroup*>(placeholderGroup);
+
+    TestReduceHelper helper(search_results,
+                            plan_ptr,
+                            placeholder_group_ptr,
+                            slice_nqs.data(),
+                            slice_topKs.data(),
+                            slice_nqs.size(),
+                            nullptr);
+    helper.SetSearchResultRefineEnabledForTest(true);
+    helper.Reduce();
+    helper.Marshal();
+
+    auto search_result_data_blobs = reinterpret_cast<SearchResultDataBlobs*>(
+        helper.GetSearchResultDataBlobs());
+
+    milvus::proto::schema::SearchResultData result_data;
+    auto parsed =
+        result_data.ParseFromArray(search_result_data_blobs->blobs[0].data(),
+                                   search_result_data_blobs->blobs[0].size());
+    EXPECT_TRUE(parsed);
+
+    DeleteSearchResultDataBlobs(
+        reinterpret_cast<CSearchResultDataBlobs>(search_result_data_blobs));
+    DeleteSearchResult(res);
+    DeleteSearchPlan(plan);
+    DeletePlaceholderGroup(placeholderGroup);
+    segment.reset();
+    DeleteCollection(collection);
+
+    return result_data;
+}
+
 TEST(CApiTest, ReduceWithGlobalRefine) {
     int N = 1000;
     int topK = 10;
@@ -750,6 +864,26 @@ TEST(CApiTest, ReduceWithGlobalRefineUsesExplicitPlaceholderGroup) {
         N, topK, num_queries, 2.0f, 1.5f);
     ASSERT_EQ(result.num_queries(), num_queries);
     ASSERT_EQ(result.top_k(), topK);
+    for (auto real_topk : result.topks()) {
+        ASSERT_GT(real_topk, 0);
+        ASSERT_LE(real_topk, topK);
+    }
+    for (int i = 0; i < result.scores_size(); i++) {
+        ASSERT_FALSE(std::isnan(result.scores(i)));
+        ASSERT_FALSE(std::isinf(result.scores(i)));
+    }
+}
+
+TEST(CApiTest, ReduceWithForcedSealedRefine) {
+    int N = 1000;
+    int topK = 10;
+    int num_queries = 4;
+
+    auto result =
+        runSearchReduceWithForcedSealedRefine(N, topK, num_queries, 2.0f, 1.5f);
+    ASSERT_EQ(result.num_queries(), num_queries);
+    ASSERT_EQ(result.top_k(), topK);
+    ASSERT_EQ(result.topks_size(), num_queries);
     for (auto real_topk : result.topks()) {
         ASSERT_GT(real_topk, 0);
         ASSERT_LE(real_topk, topK);
@@ -953,12 +1087,12 @@ TEST(CApiTest, GlobalRefineSkipsDisabledSegmentsDuringRefine) {
     int64_t slice_topks[] = {1};
 
     TestReduceHelper helper(search_results,
-                             &plan,
-                             &placeholder_group,
-                             slice_nqs,
-                             slice_topks,
-                             1,
-                             nullptr);
+                            &plan,
+                            &placeholder_group,
+                            slice_nqs,
+                            slice_topks,
+                            1,
+                            nullptr);
     helper.SetSearchResultRefineEnabledForTest(&enabled_segment, true);
     helper.SetSearchResultRefineEnabledForTest(&disabled_segment, false);
     // Should not crash — disabled segment is skipped during refine.
@@ -1152,4 +1286,27 @@ TEST(CApiTest, ReduceWithGlobalRefineFilterAll) {
     DeletePlaceholderGroup(placeholderGroup);
     DeleteCollection(collection);
     DeleteSegment(segment);
+}
+
+TEST(CApiTest, GlobalRefineRejectsGroupBy) {
+    auto schema = std::make_shared<Schema>();
+    query::Plan plan(schema);
+    plan.plan_node_ = std::make_unique<query::VectorPlanNode>();
+    plan.plan_node_->search_info_.global_refine_enable_ = true;
+    plan.plan_node_->search_info_.group_by_field_id_ = FieldId(101);
+
+    SearchResult seg0;
+    seg0.total_nq_ = 1;
+    seg0.unity_topK_ = 2;
+    seg0.distances_ = {0.9f, 0.8f};
+    seg0.seg_offsets_ = {100, 101};
+    seg0.topk_per_nq_prefix_sum_ = {0, 2};
+
+    std::vector<SearchResult*> search_results{&seg0};
+    int64_t slice_nqs[] = {1};
+    int64_t slice_topks[] = {2};
+    TestReduceHelper helper(
+        search_results, &plan, nullptr, slice_nqs, slice_topks, 1, nullptr);
+
+    ASSERT_THROW(helper.Reduce(), std::runtime_error);
 }

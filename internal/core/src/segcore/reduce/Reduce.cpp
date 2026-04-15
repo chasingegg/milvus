@@ -86,6 +86,10 @@ void
 ReduceHelper::Reduce() {
     auto global_refine_enable =
         plan_->plan_node_->search_info_.global_refine_enable_;
+    AssertInfo(
+        !(global_refine_enable &&
+          plan_->plan_node_->search_info_.group_by_field_id_.has_value()),
+        "global refine is not enabled for group_by");
     if (global_refine_enable && CanUseGlobalRefine()) {
         // Global reduce with refine: filter → truncate → refine → fill PK
         FilterInvalidSearchResults();
@@ -398,6 +402,7 @@ ReduceHelper::RefineOneSegment(
     query_dataset->SetRows(1);
     query_dataset->SetDim(is_sparse ? 0 : dim);
     query_dataset->SetTensorBeginId(0);
+    query_dataset->SetIsOwner(false);
     if (is_sparse) {
         query_dataset->SetIsSparse(true);
     }
