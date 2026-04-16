@@ -325,7 +325,7 @@ func (p *AutoIndexConfig) init(base *BaseTable) {
 		Key:          "autoIndex.globalRefine.searchTopkRatio",
 		Version:      "3.0.0",
 		DefaultValue: "0",
-		Doc:          "search topk ratio for global refine, search search_topk_ratio * topk results per segment, should be >= 1.0",
+		Doc:          "search topk ratio for global refine, search search_topk_ratio * topk results per segment, should be >= 1.0, 0 means disabled",
 		Export:       true,
 	}
 	p.GlobalRefineSearchTopkRatio.Init(base.mgr)
@@ -334,7 +334,7 @@ func (p *AutoIndexConfig) init(base *BaseTable) {
 		Key:          "autoIndex.globalRefine.refineTopkRatio",
 		Version:      "3.0.0",
 		DefaultValue: "0",
-		Doc:          "refine topk ratio for global refine, truncate to refine_topk_ratio * topk per segment and recompute exact distances, should be >= 1.0 and <= searchTopkRatio",
+		Doc:          "refine topk ratio for global refine, truncate to refine_topk_ratio * topk per segment and recompute exact distances, should be >= 1.0, 0 means disabled",
 		Export:       true,
 	}
 	p.GlobalRefineRefineTopkRatio.Init(base.mgr)
