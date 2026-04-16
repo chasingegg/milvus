@@ -59,6 +59,7 @@ SearchOnSealedIndex(const Schema& schema,
                     const BitsetView& bitset,
                     milvus::OpContext* op_context,
                     SearchResult& search_result) {
+    auto topK = search_info.topk_;
     auto round_decimal = search_info.round_decimal_;
 
     auto field_id = search_info.field_id_;
@@ -93,7 +94,6 @@ SearchOnSealedIndex(const Schema& schema,
         SemiInlineGet(field_indexing->indexing_->PinCells(nullptr, {0}));
     auto vec_index =
         dynamic_cast<index::VectorIndex*>(accessor->get_cell_of(0));
-    auto topk = search_info.topk_;
 
     const auto& offset_mapping = vec_index->GetOffsetMapping();
     TargetBitmap transformed_bitset;
@@ -102,11 +102,11 @@ SearchOnSealedIndex(const Schema& schema,
         transformed_bitset = TransformBitset(bitset, offset_mapping);
         search_bitset = BitsetView(transformed_bitset);
         if (offset_mapping.GetValidCount() == 0) {
-            auto total_num = num_queries * topk;
+            auto total_num = num_queries * topK;
             search_result.seg_offsets_.resize(total_num, INVALID_SEG_OFFSET);
             search_result.distances_.resize(total_num, 0.0f);
             search_result.total_nq_ = num_queries;
-            search_result.unity_topK_ = topk;
+            search_result.unity_topK_ = topK;
             return;
         }
     }
@@ -130,7 +130,7 @@ SearchOnSealedIndex(const Schema& schema,
         vec_index->Query(
             dataset, search_info, search_bitset, op_context, search_result);
         float* distances = search_result.distances_.data();
-        auto total_num = num_queries * topk;
+        auto total_num = num_queries * topK;
         if (round_decimal != -1) {
             const float multiplier = pow(10.0, round_decimal);
             for (int i = 0; i < total_num; i++) {
@@ -163,7 +163,7 @@ SearchOnSealedIndex(const Schema& schema,
     }
     TransformOffset(search_result.seg_offsets_, offset_mapping);
     search_result.total_nq_ = num_queries;
-    search_result.unity_topK_ = topk;
+    search_result.unity_topK_ = topK;
 }
 
 void
@@ -187,10 +187,9 @@ SearchOnSealedColumn(const Schema& schema,
     auto dim =
         data_type == DataType::VECTOR_SPARSE_U32_F32 ? 0 : field.get_dim();
 
-    auto topk = search_info.topk_;
     query::dataset::SearchDataset query_dataset{search_info.metric_type_,
                                                 num_queries,
-                                                topk,
+                                                search_info.topk_,
                                                 search_info.round_decimal_,
                                                 dim,
                                                 query_data,
@@ -237,7 +236,7 @@ SearchOnSealedColumn(const Schema& schema,
     auto num_chunk = column->num_chunks();
 
     SubSearchResult final_qr(num_queries,
-                             topk,
+                             search_info.topk_,
                              search_info.metric_type_,
                              search_info.round_decimal_);
 
@@ -332,7 +331,7 @@ SearchOnSealedColumn(const Schema& schema,
             TransformOffset(result.seg_offsets_, offset_mapping);
         }
     }
-    result.unity_topK_ = topk;
+    result.unity_topK_ = query_dataset.topk;
     result.total_nq_ = query_dataset.num_queries;
 }
 

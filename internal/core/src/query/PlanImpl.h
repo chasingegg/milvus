@@ -29,8 +29,6 @@ namespace milvus::query {
 
 using Json = nlohmann::json;
 
-struct PlaceholderGroup;
-
 struct ExtractedPlanInfo {
  public:
     explicit ExtractedPlanInfo(int64_t size) : involved_fields_(size) {
