@@ -85,12 +85,17 @@ func OptimizeSearchParams(ctx context.Context, req *querypb.SearchRequest, query
 		globalRefineEnable := paramtable.Get().AutoIndexConfig.GlobalRefineEnable.GetAsBool()
 		// Only check dim threshold and other conditions when global refine is enabled to reduce overhead
 		if globalRefineEnable {
+			log.Info("FUCK global refine enable", zap.Any("queryInfo", queryInfo))
 			isFloatVector := plan.GetVectorAnns().GetVectorType() <= planpb.VectorType_BFloat16Vector && plan.GetVectorAnns().GetVectorType() >= planpb.VectorType_FloatVector
 			minDimThreshold := paramtable.Get().AutoIndexConfig.GlobalRefineMinDimThreshold.GetAsInt64()
 			// Disable global refine for group_by, non-float vector queries, and low-dimension vectors
 			if queryInfo.GetGroupByFieldId() < 0 && isFloatVector && dimFunc(plan.GetVectorAnns().GetFieldId()) >= minDimThreshold {
 				params[common.SearchTopkRatioKey] = float32(paramtable.Get().AutoIndexConfig.GlobalRefineSearchTopkRatio.GetAsFloat())
 				params[common.RefineTopkRatioKey] = float32(paramtable.Get().AutoIndexConfig.GlobalRefineRefineTopkRatio.GetAsFloat())
+				queryInfo.SearchTopkRatio = params[common.SearchTopkRatioKey].(float32)
+				queryInfo.RefineTopkRatio = params[common.RefineTopkRatioKey].(float32)
+				log.Info("FUCK searchTopkRatio", zap.Float32("searchTopkRatio", queryInfo.SearchTopkRatio))
+				log.Info("FUCK refineTopkRatio", zap.Float32("refineTopkRatio", queryInfo.RefineTopkRatio))
 			}
 		}
 		err := queryHook.Run(params)

@@ -497,7 +497,7 @@ VectorDiskAnnIndex<T>::HasRawData() const {
 template <typename T>
 bool
 VectorDiskAnnIndex<T>::IsIndexRefineEnabled() const {
-    return index_.IsIndexRefineEnabled();
+    return true;
 }
 
 template <typename T>

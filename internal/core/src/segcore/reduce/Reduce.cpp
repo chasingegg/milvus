@@ -90,7 +90,9 @@ ReduceHelper::Reduce() {
         !(global_refine_enable &&
           plan_->plan_node_->search_info_.group_by_field_id_.has_value()),
         "global refine is not enabled for group_by");
-    if (global_refine_enable && CanUseGlobalRefine()) {
+    LOG_INFO("FUCK global_refine");
+    if (global_refine_enable) {
+        LOG_INFO("FUCK global_refine and can use global refine");
         // Global reduce with refine: filter → truncate → refine → fill PK
         FilterInvalidSearchResults();
         TruncateToRefineTopk();
