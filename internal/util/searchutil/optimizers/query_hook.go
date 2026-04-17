@@ -108,13 +108,13 @@ func OptimizeSearchParams(ctx context.Context, req *querypb.SearchRequest, query
 		queryInfo.Topk = finalTopk
 		queryInfo.SearchParams = params[common.SearchParamKey].(string)
 		// Pass global refine decision to C++ via proto after hook validation
-		if globalRefineVal, ok := params[common.GlobalRefineKey]; ok && globalRefineVal.(bool) {
-			queryInfo.SearchTopkRatio = params[common.SearchTopkRatioKey].(float32)
-			queryInfo.RefineTopkRatio = params[common.RefineTopkRatioKey].(float32)
-		} else {
-			queryInfo.SearchTopkRatio = 0
-			queryInfo.RefineTopkRatio = 0
-		}
+		// if globalRefineVal, ok := params[common.GlobalRefineKey]; ok && globalRefineVal.(bool) {
+		// 	// queryInfo.SearchTopkRatio = params[common.SearchTopkRatioKey].(float32)
+		// 	// queryInfo.RefineTopkRatio = params[common.RefineTopkRatioKey].(float32)
+		// } else {
+		// 	queryInfo.SearchTopkRatio = 0
+		// 	queryInfo.RefineTopkRatio = 0
+		// }
 		serializedExprPlan, err := proto.Marshal(&plan)
 		if err != nil {
 			log.Warn("failed to marshal optimized plan", zap.Error(err))
