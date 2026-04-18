@@ -562,6 +562,7 @@ ReduceHelper::ApplyRefinedOrderForOneNQ(
     for (size_t i = 0; i < indices.size();) {
         size_t target = indices[i];
         if (target == i) {
+            distances[i] = new_distances[i];
             ++i;
             continue;
         }
