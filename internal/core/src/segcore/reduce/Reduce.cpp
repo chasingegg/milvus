@@ -559,10 +559,17 @@ ReduceHelper::ApplyRefinedOrderForOneNQ(
                                 ? &search_result->element_indices_[nq_begin]
                                 : nullptr;
     auto* distances = search_result->distances_.data() + nq_begin;
+        // Update distances at real fixed points up front; the in-place cycle
+    // loop below rewrites indices[curr] = curr to mark processed slots,
+    // which would otherwise be indistinguishable from a real fixed point.
+    for (size_t i = 0; i < indices.size(); ++i) {
+        if (indices[i] == i) {
+            distances[i] = new_distances[i];
+        }
+    }
     for (size_t i = 0; i < indices.size();) {
         size_t target = indices[i];
         if (target == i) {
-            distances[i] = new_distances[i];
             ++i;
             continue;
         }
