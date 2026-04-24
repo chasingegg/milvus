@@ -212,12 +212,15 @@ func (node *QueryNode) reopenSegments(ctx context.Context, req *querypb.LoadSegm
 		zap.Int64s("segmentIDs", lo.Map(req.GetInfos(), func(info *querypb.SegmentLoadInfo, _ int) int64 { return info.GetSegmentID() })),
 	)
 
-	log.Info("start to reopen segments")
+	// [ITER_DEBUG] bracket reopen with start/end logs for issue #49119 to
+	// establish a time window of potential vector-index replacement.
+	log.Info("[ITER_DEBUG] start to reopen segments")
 	err := node.loader.ReopenSegments(ctx, req.GetInfos())
 	if err != nil {
-		log.Warn("failed to reopen segments", zap.Error(err))
+		log.Warn("[ITER_DEBUG] failed to reopen segments", zap.Error(err))
 		return merr.Status(err)
 	}
+	log.Info("[ITER_DEBUG] finished reopen segments")
 	return merr.Success()
 }
 

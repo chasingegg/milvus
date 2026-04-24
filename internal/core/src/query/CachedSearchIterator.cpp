@@ -24,6 +24,7 @@
 #include "index/Utils.h"
 #include "index/VectorIndex.h"
 #include "knowhere/expected.h"
+#include "log/Log.h"
 #include "mmap/ChunkedColumnInterface.h"
 #include "nlohmann/json.hpp"
 #include "query/CachedSearchIterator.h"
@@ -228,6 +229,24 @@ CachedSearchIterator::NextBatch(const SearchInfo& search_info,
 
     ValidateSearchInfo(search_info);
 
+    // [ITER_DEBUG] Debug logging for SearchIteratorV2 duplicate PK investigation
+    // (issue #49119). Logs the incoming last_bound and the first/last scored
+    // result returned, so successive next() RPCs can be correlated and boundary
+    // drift identified.
+    const auto& iter_info = search_info.iterator_v2_info_.value();
+    LOG_INFO(
+        "[ITER_DEBUG] NextBatch enter token={} batch_size={} last_bound={} "
+        "metric={} sign={} nq={} num_chunks={}",
+        iter_info.token,
+        iter_info.batch_size,
+        iter_info.last_bound.has_value()
+            ? std::to_string(iter_info.last_bound.value())
+            : std::string("nil"),
+        search_info.metric_type_,
+        static_cast<int>(sign_),
+        nq_,
+        num_chunks_);
+
     search_result.total_nq_ = nq_;
     search_result.unity_topK_ = batch_size_;
     search_result.seg_offsets_.resize(nq_ * batch_size_);
@@ -235,6 +254,40 @@ CachedSearchIterator::NextBatch(const SearchInfo& search_info,
 
     for (size_t query_idx = 0; query_idx < nq_; ++query_idx) {
         auto rst = GetBatchedNextResults(query_idx, search_info);
+
+        // [ITER_DEBUG] locate the first and last real hits (skip sentinels
+        // from padding to batch_size). `rst` is already sign-flipped back,
+        // i.e. values match what the client will see as "distance".
+        size_t real_cnt = 0;
+        size_t first_real = rst.size();
+        size_t last_real = 0;
+        for (size_t i = 0; i < rst.size(); ++i) {
+            if (rst[i].second != -1) {
+                if (first_real == rst.size()) {
+                    first_real = i;
+                }
+                last_real = i;
+                ++real_cnt;
+            }
+        }
+        if (real_cnt == 0) {
+            LOG_INFO(
+                "[ITER_DEBUG] NextBatch empty token={} query_idx={}",
+                iter_info.token,
+                query_idx);
+        } else {
+            LOG_INFO(
+                "[ITER_DEBUG] NextBatch result token={} query_idx={} "
+                "returned={} first=(dist={}, off={}) last=(dist={}, off={})",
+                iter_info.token,
+                query_idx,
+                real_cnt,
+                rst[first_real].first,
+                rst[first_real].second,
+                rst[last_real].first,
+                rst[last_real].second);
+        }
+
         WriteSingleQuerySearchResult(
             search_result, query_idx, rst, search_info.round_decimal_);
     }

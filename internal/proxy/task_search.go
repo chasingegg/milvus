@@ -1087,10 +1087,35 @@ func (t *searchTask) PostExecute(ctx context.Context) error {
 	t.result.Results.PrimaryFieldName = primaryFieldSchema.GetName()
 	if t.isIterator && len(t.queryInfos) == 1 && t.queryInfos[0] != nil {
 		if iterInfo := t.queryInfos[0].GetSearchIteratorV2Info(); iterInfo != nil {
+			newLastBound := getLastBound(t.result, iterInfo.LastBound, getMetricType(toReduceResults))
 			t.result.Results.SearchIteratorV2Results = &schemapb.SearchIteratorV2Results{
 				Token:     iterInfo.GetToken(),
-				LastBound: getLastBound(t.result, iterInfo.LastBound, getMetricType(toReduceResults)),
+				LastBound: newLastBound,
 			}
+			// [ITER_DEBUG] log the iteration cursor state for issue #49119 so
+			// consecutive next() RPCs can be correlated: whether last_bound
+			// advanced, tail PK/score, mvcc/session_ts, and guarantee_ts.
+			incoming := "nil"
+			if iterInfo.LastBound != nil {
+				incoming = fmt.Sprintf("%v", *iterInfo.LastBound)
+			}
+			pkList := t.result.GetResults().GetIds()
+			var tailPk string
+			if intIds := pkList.GetIntId(); intIds != nil && len(intIds.Data) > 0 {
+				tailPk = fmt.Sprintf("%d", intIds.Data[len(intIds.Data)-1])
+			} else if strIds := pkList.GetStrId(); strIds != nil && len(strIds.Data) > 0 {
+				tailPk = strIds.Data[len(strIds.Data)-1]
+			}
+			log.Info("[ITER_DEBUG] proxy iterator cursor",
+				zap.String("token", iterInfo.GetToken()),
+				zap.String("incomingLastBound", incoming),
+				zap.Float32("newLastBound", newLastBound),
+				zap.Int("scores", len(t.result.GetResults().GetScores())),
+				zap.String("tailPK", tailPk),
+				zap.Uint64("guaranteeTs", t.GuaranteeTimestamp),
+				zap.Uint64("sessionTs", t.result.GetSessionTs()),
+				zap.Uint64("beginTs", t.BeginTs()),
+				zap.String("collection", t.request.GetCollectionName()))
 		}
 	}
 

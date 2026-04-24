@@ -1176,7 +1176,17 @@ func (sd *shardDelegator) UpdateSchema(ctx context.Context, schema *schemapb.Col
 	}
 	defer sd.lifetime.Done()
 
-	log.Info("delegator received update schema event")
+	// [ITER_DEBUG] enrich schema-change log for issue #49119: record the
+	// schema version / field names so we can correlate a schema-change
+	// event with the iterator duplicate-PK window.
+	fieldNames := make([]string, 0, len(schema.GetFields()))
+	for _, f := range schema.GetFields() {
+		fieldNames = append(fieldNames, f.GetName())
+	}
+	log.Info("[ITER_DEBUG] delegator received update schema event",
+		zap.Uint64("schVersion", schVersion),
+		zap.Int("fieldCount", len(schema.GetFields())),
+		zap.Strings("fields", fieldNames))
 
 	sd.schemaChangeMutex.Lock()
 	defer sd.schemaChangeMutex.Unlock()

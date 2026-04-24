@@ -1133,6 +1133,24 @@ SegmentGrowingImpl::vector_search(SearchInfo& search_info,
                                   const BitsetView& bitset,
                                   milvus::OpContext* op_context,
                                   SearchResult& output) const {
+    // [ITER_DEBUG] log entry into growing vector_search for SearchIteratorV2
+    // (issue #49119). Growing segment goes through brute-force or small-index
+    // path, so if a sealed/growing split changes between RPCs the distance
+    // can drift enough to pass the strict `dist > last_bound` filter twice.
+    if (search_info.iterator_v2_info_.has_value()) {
+        const auto& iter_info = search_info.iterator_v2_info_.value();
+        LOG_INFO(
+            "[ITER_DEBUG] growing.vector_search segment_id={} field_id={} "
+            "token={} last_bound={} metric={} timestamp={}",
+            id_,
+            search_info.field_id_.get(),
+            iter_info.token,
+            iter_info.last_bound.has_value()
+                ? std::to_string(iter_info.last_bound.value())
+                : std::string("nil"),
+            search_info.metric_type_,
+            timestamp);
+    }
     query::SearchOnGrowing(*this,
                            search_info,
                            query_data,

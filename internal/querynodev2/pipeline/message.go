@@ -17,10 +17,13 @@
 package pipeline
 
 import (
+	"go.uber.org/zap"
+
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/querynodev2/collector"
 	"github.com/milvus-io/milvus/internal/querynodev2/delegator"
+	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/mq/msgstream"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/util/message/adaptor"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/util/message/messageutil"
@@ -62,6 +65,12 @@ func (msg *insertNodeMsg) append(taskMsg msgstream.TsMsg) error {
 		}
 		msg.schema = body.GetSchema()
 		msg.schemaVersion = taskMsg.BeginTs()
+		// [ITER_DEBUG] mark the moment an AddCollectionField message is
+		// consumed by the pipeline; issue #49119 hypothesizes this event
+		// triggers index-state change mid-iteration.
+		log.Info("[ITER_DEBUG] pipeline consumed AddCollectionField",
+			zap.Uint64("schemaVersion", taskMsg.BeginTs()),
+			zap.Int("fieldCount", len(body.GetSchema().GetFields())))
 	case commonpb.MsgType_AlterCollection:
 		putCollectionMsg := taskMsg.(*adaptor.AlterCollectionMessageBody)
 		header := putCollectionMsg.AlterCollectionMessage.Header()
@@ -69,6 +78,11 @@ func (msg *insertNodeMsg) append(taskMsg msgstream.TsMsg) error {
 			body := putCollectionMsg.AlterCollectionMessage.MustBody()
 			msg.schema = body.GetUpdates().GetSchema()
 			msg.schemaVersion = taskMsg.BeginTs()
+			// [ITER_DEBUG] mark the moment an AlterCollection (schema-change
+			// variant) message is consumed by the pipeline; issue #49119.
+			log.Info("[ITER_DEBUG] pipeline consumed AlterCollection(schema)",
+				zap.Uint64("schemaVersion", taskMsg.BeginTs()),
+				zap.Int("fieldCount", len(body.GetUpdates().GetSchema().GetFields())))
 		}
 	default:
 		return merr.WrapErrParameterInvalid("msgType is Insert or Delete", "not")

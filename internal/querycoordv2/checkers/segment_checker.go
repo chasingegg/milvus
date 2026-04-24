@@ -340,6 +340,12 @@ func (c *SegmentChecker) getSealedSegmentDiff(
 		// proto3 optional): during a mixed-version rollout an old QueryNode has
 		// no way to advance DataVersion, so triggering Reopen would loop forever.
 		if segInDist.DataVersion != nil && *segInDist.DataVersion < segment.GetDataVersion() {
+			// [ITER_DEBUG] surface why a reopen was scheduled for issue #49119
+			log.Ctx(ctx).Info("[ITER_DEBUG] segment reopen scheduled by DataVersion",
+				zap.Int64("collectionID", collectionID),
+				zap.Int64("segmentID", segment.GetID()),
+				zap.Int32("distDataVersion", *segInDist.DataVersion),
+				zap.Int32("targetDataVersion", segment.GetDataVersion()))
 			return true
 		}
 		// Trigger reopen when dist manifest is older than target manifest.
@@ -354,7 +360,16 @@ func (c *SegmentChecker) getSealedSegmentDiff(
 				zap.Error(err))
 			return false
 		}
-		return cmp < 0
+		if cmp < 0 {
+			// [ITER_DEBUG] surface manifest-triggered reopen for issue #49119
+			log.Ctx(ctx).Info("[ITER_DEBUG] segment reopen scheduled by manifest",
+				zap.Int64("collectionID", collectionID),
+				zap.Int64("segmentID", segment.GetID()),
+				zap.String("distManifest", segInDist.ManifestPath),
+				zap.String("targetManifest", segment.GetManifestPath()))
+			return true
+		}
+		return false
 	}
 
 	nextTargetExist := c.targetMgr.IsNextTargetExist(ctx, collectionID)

@@ -1483,6 +1483,29 @@ ChunkedSegmentSealedImpl::vector_search(SearchInfo& search_info,
     AssertInfo(field_meta.is_vector(),
                "The meta type of vector field is not vector type");
 
+    // [ITER_DEBUG] log entry into sealed vector_search for SearchIteratorV2
+    // (issue #49119). Pairs the segment_id with the iterator token so distance
+    // drift can be traced across consecutive next() RPCs.
+    if (search_info.iterator_v2_info_.has_value()) {
+        const auto& iter_info = search_info.iterator_v2_info_.value();
+        const char* branch =
+            get_bit(binlog_index_bitset_, field_id)
+                ? "binlog_index"
+                : (get_bit(index_ready_bitset_, field_id) ? "index" : "data");
+        LOG_INFO(
+            "[ITER_DEBUG] sealed.vector_search segment_id={} field_id={} "
+            "token={} last_bound={} branch={} metric={} timestamp={}",
+            id_,
+            field_id.get(),
+            iter_info.token,
+            iter_info.last_bound.has_value()
+                ? std::to_string(iter_info.last_bound.value())
+                : std::string("nil"),
+            branch,
+            search_info.metric_type_,
+            timestamp);
+    }
+
     if (get_bit(binlog_index_bitset_, field_id)) {
         AssertInfo(
             vec_binlog_config_.find(field_id) != vec_binlog_config_.end(),
