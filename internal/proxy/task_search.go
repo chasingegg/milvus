@@ -1100,22 +1100,34 @@ func (t *searchTask) PostExecute(ctx context.Context) error {
 				incoming = fmt.Sprintf("%v", *iterInfo.LastBound)
 			}
 			pkList := t.result.GetResults().GetIds()
+			scores := t.result.GetResults().GetScores()
 			var tailPk string
-			if intIds := pkList.GetIntId(); intIds != nil && len(intIds.Data) > 0 {
-				tailPk = fmt.Sprintf("%d", intIds.Data[len(intIds.Data)-1])
-			} else if strIds := pkList.GetStrId(); strIds != nil && len(strIds.Data) > 0 {
-				tailPk = strIds.Data[len(strIds.Data)-1]
-			}
-			log.Info("[ITER_DEBUG] proxy iterator cursor",
+			fields := []zap.Field{
 				zap.String("token", iterInfo.GetToken()),
 				zap.String("incomingLastBound", incoming),
 				zap.Float32("newLastBound", newLastBound),
-				zap.Int("scores", len(t.result.GetResults().GetScores())),
-				zap.String("tailPK", tailPk),
+				zap.Int("scores", len(scores)),
+				zap.Float32s("scoresDetail", scores),
 				zap.Uint64("guaranteeTs", t.GuaranteeTimestamp),
 				zap.Uint64("sessionTs", t.result.GetSessionTs()),
 				zap.Uint64("beginTs", t.BeginTs()),
-				zap.String("collection", t.request.GetCollectionName()))
+				zap.String("collection", t.request.GetCollectionName()),
+			}
+			if intIds := pkList.GetIntId(); intIds != nil {
+				ids := intIds.GetData()
+				if len(ids) > 0 {
+					tailPk = fmt.Sprintf("%d", ids[len(ids)-1])
+				}
+				fields = append(fields, zap.Int64s("ids", ids))
+			} else if strIds := pkList.GetStrId(); strIds != nil {
+				ids := strIds.GetData()
+				if len(ids) > 0 {
+					tailPk = ids[len(ids)-1]
+				}
+				fields = append(fields, zap.Strings("ids", ids))
+			}
+			fields = append(fields, zap.String("tailPK", tailPk))
+			log.Info("[ITER_DEBUG] proxy iterator cursor", fields...)
 		}
 	}
 
