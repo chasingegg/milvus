@@ -16,8 +16,8 @@ milvus_add_pkg_config("knowhere")
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY INCLUDE_DIRECTORIES "")
 # v3.0.6 includes the knowhere iterator error-code interface
 # (zilliztech/knowhere#1699) that this segcore adaptation depends on.
-set( KNOWHERE_VERSION v3.0.6 )
-set( GIT_REPOSITORY  "https://github.com/zilliztech/knowhere.git")
+set( KNOWHERE_VERSION bm25-update )
+set( GIT_REPOSITORY  "https://github.com/chasingegg/knowhere.git")
 
 message(STATUS "Knowhere repo: ${GIT_REPOSITORY}")
 message(STATUS "Knowhere version: ${KNOWHERE_VERSION}")
