@@ -20,6 +20,8 @@ class MilvusConan(ConanFile):
         "benchmark/1.7.0#459f3bb1a64400a886ba43047576df3c",
         "yaml-cpp/0.7.0#355a88fb838abacfeb022dd52b91e248",
         "marisa/0.2.6#a1352b20c0c6c48fee4968584ffef631",
+        # Cardinal is built from source; Knowhere's Conan recipe is not evaluated.
+        "metis/5.2.1#85cfe7ee0dfc0cba7c0334e92efcbbc6",
         "glog/0.7.1#a306e61d7b8311db8cb148ad62c48030",
         "gflags/2.2.2#7671803f1dc19354cc90bd32874dcfda",
         "double-conversion/3.3.0#640e35791a4bac95b0545e2f54b7aceb",
@@ -95,6 +97,8 @@ class MilvusConan(ConanFile):
         "onetbb/*:tbbmalloc": False,
         "onetbb/*:tbbproxy": False,
         "gflags/*:shared": True,
+        # Match Knowhere/Cardinal's METIS integer and real type widths.
+        "metis/*:with_64bit_types": True,
         "gdal/*:shared": False,
         "gdal/*:fPIC": True,
         "icu/*:shared": False,
