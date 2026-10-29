@@ -1576,3 +1576,16 @@ func TestProxyLocalCollectionVisibilityDefault(t *testing.T) {
 	require.NoError(t, params.Save(params.ProxyCfg.EnableLocalCollectionVisibility.Key, "true"))
 	require.True(t, params.ProxyCfg.EnableLocalCollectionVisibility.GetAsBool())
 }
+
+func TestTieredLazyIndexSlotConfig(t *testing.T) {
+	Init()
+	params := Get()
+	item := &params.QueryNodeCfg.TieredLazyIndexSlotEnabled
+
+	assert.Equal(t, "false", item.DefaultValue)
+	defer params.Reset(item.Key)
+	assert.NoError(t, params.Save(item.Key, "false"))
+	assert.False(t, item.GetAsBool())
+	assert.NoError(t, params.Save(item.Key, "true"))
+	assert.True(t, item.GetAsBool())
+}
